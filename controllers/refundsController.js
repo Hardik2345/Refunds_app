@@ -132,44 +132,184 @@ async function getOrdersByPhone(tenant, phone) {
   return ordersResponse.data.orders;
 }
 
+// 🔹 Utility: Get orders for a customer by full/partial name
+async function getOrdersByName(tenant, name) {
+  const customerSearchUrl = `https://${tenant.shopDomain}.myshopify.com/admin/api/${tenant.apiVersion}/customers/search.json`;
+  const customerResponse = await axios.get(customerSearchUrl, {
+    params: { query: `name:${name}` },
+    headers: { "X-Shopify-Access-Token": tenant.accessToken },
+  });
+
+  if (!customerResponse.data.customers.length) return null;
+  const customerId = customerResponse.data.customers[0].id;
+
+  const ordersUrl = `https://${tenant.shopDomain}.myshopify.com/admin/api/${tenant.apiVersion}/orders.json?customer_id=${customerId}&status=any&limit=5`;
+  const ordersResponse = await axios.get(ordersUrl, {
+    headers: { "X-Shopify-Access-Token": tenant.accessToken },
+  });
+
+  return ordersResponse.data.orders;
+}
+
 // 🔹 Controller: Get Orders
+// controllers/refundsController.js (replace getOrders with this version)
 exports.getOrders = async (req, res) => {
-  const { startDate, endDate, limit = 10, page_info, phone } = req.query;
+  const { startDate, endDate, limit = 10, page_info, phone, name, orderName } = req.query;
 
   try {
     const tenant = req.tenant; // ✅ injected by middleware
-    let requestUrl;
 
-    if (phone) {
+    // ---------- Branch A: Search by ORDER NAME (GraphQL) ----------
+    if (orderName) {
+      const gqlUrl = `https://${tenant.shopDomain}.myshopify.com/admin/api/${tenant.apiVersion}/graphql.json`;
+
+      // Build GraphQL query with cursor pagination
+      const query = `
+        query OrdersByName($first: Int!, $after: String, $q: String!) {
+          orders(first: $first, after: $after, query: $q, sortKey: CREATED_AT, reverse: true) {
+            edges {
+              cursor
+              node {
+                id
+                name
+                createdAt
+                currentSubtotalPriceSet { presentmentMoney { amount } }
+                financialStatus
+                displayFulfillmentStatus
+
+                customer {
+                  id
+                  firstName
+                  lastName
+                  email
+                  phone
+                }
+
+                lineItems(first: 100) {
+                  edges {
+                    node {
+                      id
+                      name
+                      quantity
+                      originalUnitPriceSet { presentmentMoney { amount } }
+                      // Sum of discounts on this line
+                      discountAllocations {
+                        allocatedAmountSet { presentmentMoney { amount } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+      `;
+
+      // Shopify order search query syntax supports things like: name:#1234
+      const variables = {
+        first: Math.min(Number(limit) || 10, 100),
+        after: page_info || null,
+        q: `name:${String(orderName)}`,
+      };
+
+      const gqlResp = await axios.post(
+        gqlUrl,
+        { query, variables },
+        { headers: { "X-Shopify-Access-Token": tenant.accessToken } }
+      );
+
+      const edges = gqlResp.data?.data?.orders?.edges || [];
+      const pageInfoGql = gqlResp.data?.data?.orders?.pageInfo || { hasNextPage: false, endCursor: null };
+
+      const orders = edges.map(({ node }) => {
+        // Map fulfillment status to your previous REST-ish shape
+        const fulfillment_status = node.displayFulfillmentStatus
+          ? String(node.displayFulfillmentStatus).toLowerCase()
+          : null;
+
+        const line_items = (node.lineItems?.edges || []).map(({ node: li }) => {
+          const base = parseFloat(li.originalUnitPriceSet?.presentmentMoney?.amount || "0");
+          const disc = Array.isArray(li.discountAllocations)
+            ? li.discountAllocations.reduce(
+                (sum, da) => sum + parseFloat(da?.allocatedAmountSet?.presentmentMoney?.amount || "0"),
+                0
+              )
+            : 0;
+
+          // Keep parity with your REST mapping: price after discount allocations (per unit)
+          const net = Math.max(0, base - disc);
+          return {
+            id: li.id,
+            name: li.name,
+            quantity: li.quantity,
+            price: net.toFixed(2),
+          };
+        });
+
+        return {
+          id: node.id, // GraphQL GID (e.g., gid://shopify/Order/1234567890)
+          name: node.name,
+          created_at: node.createdAt,
+          current_subtotal_price: node.currentSubtotalPriceSet?.presentmentMoney?.amount ?? null,
+          financial_status: node.financialStatus ? String(node.financialStatus).toLowerCase() : null,
+          fulfillment_status,
+          line_items,
+          customer: node.customer
+            ? {
+                id: node.customer.id,
+                first_name: node.customer.firstName,
+                last_name: node.customer.lastName,
+                email: node.customer.email,
+                phone: node.customer.phone,
+              }
+            : null,
+        };
+      });
+
+      return res.status(200).json({
+        orders,
+        // For name-search, we return GraphQL cursor in the same key you already use.
+        nextPageInfo: pageInfoGql.hasNextPage ? pageInfoGql.endCursor : null,
+      });
+    }
+
+    // ---------- Branch B: Your existing REST paths (phone OR date range) ----------
+    let requestUrl;
+    if (phone || name) {
       // Find customer by phone
       const customerSearchUrl = `https://${tenant.shopDomain}.myshopify.com/admin/api/${tenant.apiVersion}/customers/search.json`;
       const customerResponse = await axios.get(customerSearchUrl, {
-        params:{query:`phone:${phone}`},
+        params: phone ? { query: `phone:${phone}` } : { query: `name:${name}` },
         headers: { "X-Shopify-Access-Token": tenant.accessToken },
       });
 
       if (!customerResponse.data.customers.length) {
-        return res.status(404).json({ error: "No customer found with this phone number." });
+        return res.status(404).json({ error: phone ? "No customer found with this phone number." : "No customer found with this name." });
       }
       const customerId = customerResponse.data.customers[0].id;
 
-      let queryParams = new URLSearchParams({ limit, status: "any", customer_id: customerId });
+      const queryParams = new URLSearchParams({ limit, status: "any", customer_id: customerId });
       if (page_info) queryParams.append("page_info", page_info);
+
       requestUrl = `https://${tenant.shopDomain}.myshopify.com/admin/api/${tenant.apiVersion}/orders.json?${queryParams.toString()}`;
     } else if (startDate && endDate) {
-      // Filter by date
-      let queryParams = new URLSearchParams({
+      const queryParams = new URLSearchParams({
         limit,
         status: "any",
         created_at_min: startDate,
         created_at_max: endDate,
       });
       if (page_info) queryParams.append("page_info", page_info);
+
       requestUrl = `https://${tenant.shopDomain}.myshopify.com/admin/api/${tenant.apiVersion}/orders.json?${queryParams.toString()}`;
     } else {
-      return res.status(400).json({ error: "Please provide either a phone number or a date range." });
+      return res.status(400).json({
+        error: "Please provide either a phone number, a customer name, an orderName, or a date range.",
+      });
     }
 
+    // REST fetch and mapping (unchanged)
     const response = await axios.get(requestUrl, {
       headers: { "X-Shopify-Access-Token": tenant.accessToken },
     });
@@ -208,27 +348,30 @@ exports.getOrders = async (req, res) => {
         : null,
     }));
 
-    res.status(200).json({ orders: filteredOrders, nextPageInfo: pageInfo.next });
+    return res.status(200).json({ orders: filteredOrders, nextPageInfo: pageInfo.next });
   } catch (err) {
     console.error("Error fetching orders:", err.message);
-    res.status(500).json({ error: "Internal Server Error" });
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
 // 🔹 Controller: Refund Order by Phone
+// 🔹 Controller: Refund Order by Phone OR Order ID
 exports.refundOrderByPhone = async (req, res) => {
   try {
+    // Approval gate stays the same
     if (res.locals.ruleDecision?.outcome === "REQUIRE_APPROVAL" && res.locals.requiresApproval) {
       const pending = await PendingRefund.create({
         tenant: req.tenant._id,
         requester: req.user._id,
         payload: {
           phone: req.body.phone || null,
+          name: req.body.name || null,
           orderId: req.body.orderId || null,
           amount: Number(req.body.amount)
         },
         ruleDecision: res.locals.ruleDecision,
-        context: req.ruleContext // optional, useful for review UI
+        context: req.ruleContext
       });
 
       return res.status(202).json({
@@ -237,22 +380,40 @@ exports.refundOrderByPhone = async (req, res) => {
         ruleDecision: res.locals.ruleDecision
       });
     }
-    const tenant = req.tenant; // ✅ injected by middleware
-    const { phone, orderId, lineItems } = req.body;
 
-    const orders = await getOrdersByPhone(tenant, phone);
-    if (!orders || orders.length === 0)
-      return res.status(404).json({ error: "No orders found for this phone number." });
+    const tenant = req.tenant;
+  const { phone, name, orderId, lineItems } = req.body;
 
-    const targetOrder = orderId
-      ? orders.find((o) => String(o.id) === String(orderId))
-      : orders[0];
+    // --- Resolve target order by orderId (preferred) or by phone ---
+    let targetOrder = null;
 
-    if (!targetOrder) return res.status(404).json({ error: "Order not found for this customer." });
+    if (orderId) {
+      // Fetch order directly by ID (works without phone)
+      const url = `https://${tenant.shopDomain}.myshopify.com/admin/api/${tenant.apiVersion}/orders/${orderId}.json`;
+      const r = await axios.get(url, {
+        headers: { "X-Shopify-Access-Token": tenant.accessToken },
+      });
+      targetOrder = r.data?.order || null;
 
+      if (!targetOrder) {
+        return res.status(404).json({ error: "Order not found for provided orderId." });
+      }
+    } else if (phone || name) {
+      // Legacy path: find by phone -> pick first or matching orderId (if provided)
+      const orders = phone ? await getOrdersByPhone(tenant, phone) : await getOrdersByName(tenant, name);
+      if (!orders || orders.length === 0) {
+        return res.status(404).json({ error: phone ? "No orders found for this phone number." : "No orders found for this customer name." });
+      }
+      targetOrder = orders[0];
+    } else {
+      return res.status(400).json({ error: "Provide either orderId, phone, or name." });
+    }
+
+    // Optional: early bail if (accidentally) refunded
     // const alreadyRefunded = await hasRefunds(tenant, targetOrder.id);
     // if (alreadyRefunded) return res.status(400).json({ error: "This order has already been refunded." });
 
+    // Need a successful parent transaction to refund
     const transactions = await getOrderTransactions(tenant, targetOrder.id);
     const successfulTransaction = transactions.find((t) => t.status === "success");
     if (!successfulTransaction)
@@ -268,17 +429,17 @@ exports.refundOrderByPhone = async (req, res) => {
       session: { shop: `${tenant.shopDomain}.myshopify.com`, accessToken: tenant.accessToken },
     });
 
+    // --- Build refund payload (partial vs full) ---
     let refundPayload;
-
-    if (lineItems && lineItems.length > 0) {
-      // Partial refund
+    if (Array.isArray(lineItems) && lineItems.length > 0) {
+      // Partial refund (no restock by default)
       refundPayload = {
         refund: {
           refund_line_items: lineItems.map((item) => ({
             line_item_id: item.lineItemId,
-            quantity: 0,
+            quantity: 0, // quantity 0 when refunding by amount only; set >0 if you intend restock/returns
             restock_type: "no_restock",
-            location_id: 104836956455,
+            location_id: 104836956455, // optional: remove/hardcode per tenant config
           })),
           transactions: [
             {
@@ -295,9 +456,8 @@ exports.refundOrderByPhone = async (req, res) => {
           notify: true,
         },
       };
-      console.log("Partial refund payload:", JSON.stringify(refundPayload, null, 2));
     } else {
-      // Full refund (with cancellation)
+      // Full refund (cancel + refund)
       try {
         await client.post({
           path: `orders/${targetOrder.id}/cancel`,
@@ -327,13 +487,14 @@ exports.refundOrderByPhone = async (req, res) => {
       };
     }
 
+    // --- Execute refund ---
     const response = await client.post({
       path: `orders/${targetOrder.id}/refunds`,
       data: refundPayload,
       type: "application/json",
     });
 
-    // After successful refund, append informative tags to the order (best-effort)
+    // Best-effort tagging (optional)
     try {
       const tags = [
         'Techit_refunds_app',
@@ -351,28 +512,24 @@ exports.refundOrderByPhone = async (req, res) => {
       console.warn('appendOrderTags failed (non-fatal):', e.message);
     }
 
-    // --- Lifetime refund COUNT ledger (per tenant x customer) ---
+    // --- Update RefundStat (idempotency guarded via Redis) ---
     try {
-      // prefer the key computed in buildRefundContext (stable & reusable)
       let customerKey = req?.ruleContext?.meta?.customerKey || null;
       if (!customerKey) {
-        const phone = req.body?.phone || targetOrder?.customer?.phone || targetOrder?.phone;
-        const email = targetOrder?.customer?.email;
-        customerKey = phone ? `phone:${String(phone)}` : (email ? `email:${String(email).toLowerCase()}` : null);
+        const ph = req.body?.phone || targetOrder?.customer?.phone || targetOrder?.phone;
+        const em = targetOrder?.customer?.email;
+        customerKey = ph ? `phone:${String(ph)}` : (em ? `email:${String(em).toLowerCase()}` : null);
       }
 
-      // optional: idempotency guard (avoid double-increment on retries)
       const refundId = response?.body?.refund?.id || response?.body?.refund?.admin_graphql_api_id || null;
       let canIncrement = true;
       if (redis && refundId) {
         const key = `refund_stat:incr_guard:${String(refundId)}`;
-        // NX = only set if not exists; EX=expire. If returns 'OK', we own it.
         const setOk = await redis.set(key, "1", "NX", "EX", 300);
         canIncrement = !!setOk;
       }
 
       if (customerKey && canIncrement) {
-        // on successful refund
         await RefundStat.updateOne(
           { tenant: req.tenant._id, customer: customerKey, user: req.user._id },
           {
@@ -384,7 +541,7 @@ exports.refundOrderByPhone = async (req, res) => {
               lastErrorCode: null,
               lastErrorMsg: null,
               lastOrderId: String(targetOrder.id),
-              lastAmount: Number(lineItems?.length
+              lastAmount: Number(Array.isArray(lineItems) && lineItems.length
                 ? lineItems.reduce((s,i)=>s+Number(i.amount||0),0)
                 : targetOrder.total_price),
               lastPartial: Array.isArray(lineItems) && lineItems.length > 0,
@@ -403,64 +560,26 @@ exports.refundOrderByPhone = async (req, res) => {
                   httpCode: 200,
                   errorCode: null,
                   errorMsg: null,
-                  attemptNo: (/* you can pass from state if retried */ 1),
+                  attemptNo: 1,
                   backoffMs: 0,
                   orderId: String(targetOrder.id),
-                  amount: Number(lineItems?.length
+                  amount: Number(Array.isArray(lineItems) && lineItems.length
                     ? lineItems.reduce((s,i)=>s+Number(i.amount||0),0)
                     : targetOrder.total_price),
                   partial: Array.isArray(lineItems) && lineItems.length > 0,
                   ruleSetId: res.locals?.ruleDecision?.ruleSetId || req.ruleContext?.ruleSetId || null,
                   rulesVer: res.locals?.ruleDecision?.rulesVersion || req.ruleContext?.rulesVersion || null,
                 }],
-                $slice: -25    // keep only the last 25 entries
+                $slice: -25
               }
             }
           },
           { upsert: true }
         );
-
       }
     } catch (e) {
       console.error("RefundStat update failed:", e.message);
-      // inside catch(err) when refund execution fails:
-      try {
-        const doc = await RefundStat.findOneAndUpdate(
-          { tenant: req.tenant._id, customer: customerKey, user: req.user._id },
-          { $setOnInsert: { retryBaseMs: 250, maxRetryMs: 30_000 } },
-          { upsert: true, new: true }
-        );
-
-        // increment and compute next backoff
-        doc.failureCount = (doc.failureCount || 0) + 1;
-        doc.retryCount   = (doc.retryCount   || 0) + 1;
-        const backoffMs = doc.computeBackoffMs();
-        doc.nextRetryAt = new Date(Date.now() + backoffMs);
-        doc.lastOutcome = "ERROR";
-        doc.lastErrorCode = inferErrorCode(err);  // implement a tiny mapping
-        doc.lastErrorMsg  = String(err.message || "unknown").slice(0, 500);
-        doc.lastAttemptAt = new Date();
-
-        doc.pushAttempt({
-          action: "refund",
-          outcome: "ERROR",
-          httpCode: Number(err.status || err.statusCode) || null,
-          errorCode: doc.lastErrorCode,
-          errorMsg: doc.lastErrorMsg,
-          attemptNo: doc.retryCount,
-          backoffMs,
-          orderId: req.body?.orderId || null,
-          amount: Number(req.body?.amount) || null,
-          partial: Array.isArray(req.body?.lineItems) && req.body.lineItems.length > 0,
-          ruleSetId: req.ruleContext?.ruleSetId || null,
-          rulesVer: req.ruleContext?.rulesVersion || null,
-        });
-
-        await doc.save();
-      } catch (e) {
-        console.error("RefundStat failure logging failed:", e.message);
-      }
-
+      // non-fatal
     }
 
     return res.status(200).json({ refund: response?.body?.refund || null });
@@ -469,6 +588,7 @@ exports.refundOrderByPhone = async (req, res) => {
     return res.status(500).json({ error: "Internal Server Error" });
   }
 };
+
 
 exports.approvePendingRefund = async (req, res) => {
   try {
@@ -484,12 +604,12 @@ exports.approvePendingRefund = async (req, res) => {
       return res.status(404).json({ error: 'Pending refund not found or not pending' });
     }
 
-    const { phone, orderId, lineItems } = pending.payload;
+  const { phone, name, orderId, lineItems } = pending.payload;
 
     // --- Fetch target order again (fresh check) ---
-    const orders = await getOrdersByPhone(tenant, phone);
+    const orders = phone ? await getOrdersByPhone(tenant, phone) : await getOrdersByName(tenant, name);
     if (!orders || orders.length === 0) {
-      return res.status(404).json({ error: 'No orders found for this phone number.' });
+      return res.status(404).json({ error: phone ? 'No orders found for this phone number.' : 'No orders found for this customer name.' });
     }
     const targetOrder = orderId
       ? orders.find(o => String(o.id) === String(orderId))
@@ -668,7 +788,8 @@ exports.bulkPreviewRefunds = async (req, res) => {
   try {
     const tenant = req.tenant;
     const user = req.user;
-    const defaultPhone = req.body?.phone || null;
+  const defaultPhone = req.body?.phone || null;
+  const defaultName = req.body?.name || null;
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
 
     if (!items.length) {
@@ -681,6 +802,7 @@ exports.bulkPreviewRefunds = async (req, res) => {
     const results = await mapWithConcurrency(items, CONCURRENCY, async (item) => {
       const payload = {
         phone: item.phone || defaultPhone || null,
+        name: item.name || defaultName || null,
         orderId: item.orderId || null,
         amount: item.amount,
         lineItems: Array.isArray(item.lineItems) ? item.lineItems : []

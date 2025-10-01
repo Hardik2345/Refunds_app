@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Box, Grid, Card, CardHeader, CardContent, CardActions, Button, TextField, Typography, Alert, Snackbar, CircularProgress, Chip, Tooltip, Checkbox, InputAdornment, Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab } from '@mui/material';
+import { Box, Grid, Card, CardHeader, CardContent, CardActions, Button, TextField, Typography, Alert, Snackbar, CircularProgress, Chip, Tooltip, Checkbox, InputAdornment, Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab, MenuItem } from '@mui/material';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import HighlightOffIcon from '@mui/icons-material/HighlightOff';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
@@ -13,7 +13,8 @@ interface RuleDecision { outcome: 'ALLOW' | 'DENY' | 'REQUIRE_APPROVAL'; reason?
 interface PreviewResult { orderId: number | null; decision: RuleDecision | null; requiresApproval: boolean | null; ctxHints?: { orderId?: number | null; rulesVersion?: number; ruleSetId?: string | null; attemptsToday?: number | null; daysSinceDelivery?: number | null; totalCredits?: number | null; totalSpentCredits?: number | null } | null; error?: string | null }
 
 export default function AgentDashboard() {
-	const [phone, setPhone] = useState('');
+	const [searchMode, setSearchMode] = useState<'phone'|'name'>('phone');
+	const [query, setQuery] = useState('');
 	const [orders, setOrders] = useState<OrderSummary[] | null>(null);
 	const [preview, setPreview] = useState<Record<string, PreviewResult>>({});
 	const [loading, setLoading] = useState(false);
@@ -64,12 +65,14 @@ export default function AgentDashboard() {
 		setSelectionPreview({});
 		setSelections({});
 		try {
-			const res = await api.get<GetOrdersResponse>('/orders', { params: { phone } });
+			const params = searchMode === 'phone' ? { phone: query } : { name: query };
+			const res = await api.get<GetOrdersResponse>('/orders', { params });
 			const found = res.data.orders || [];
 			setOrders(found);
 			if (found.length) {
 				const items = found.map(o => ({ orderId: o.id }));
-				const p = await api.post<{ results: PreviewResult[] }>('/refund/preview/bulk', { phone, items });
+				const body = searchMode === 'phone' ? { phone: query, items } : { name: query, items };
+				const p = await api.post<{ results: PreviewResult[] }>('/refund/preview/bulk', body);
 					const byId: Record<string, PreviewResult> = {};
 					let summary: { totalCredits: number | null; totalSpentCredits: number | null } | null = null;
 				for (const r of p.data.results) {
@@ -100,7 +103,8 @@ export default function AgentDashboard() {
 
 	async function onRefund(orderId: number) {
 		try {
-			const res = await api.post('/refund', { phone, orderId });
+			const payload = searchMode === 'phone' ? { phone: query, orderId } : { name: query, orderId };
+			const res = await api.post('/refund', payload);
 			if (res.status === 200) {
 				setResultDlg({ open: true, status: 'success', message: 'Refund executed successfully' });
 			} else if (res.status === 202) {
@@ -177,7 +181,8 @@ export default function AgentDashboard() {
 					...(Number.isFinite(amountNum) ? { amount: Number(amountNum.toFixed(2)) } : {})
 				};
 			});
-		return { phone, orderId, lineItems: items } as const;
+		const base = searchMode === 'phone' ? { phone: query } : { name: query };
+		return { ...base, orderId, lineItems: items } as const;
 	}
 
 	function partialRefundEnabled(orderId: number) {
@@ -268,12 +273,29 @@ export default function AgentDashboard() {
 			{/* Search Panel */}
 			<Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
 				<Card sx={{ width: '100%', maxWidth: 720 }}>
-					<CardHeader title="Refunds Portal" subheader="Search by customer phone to load recent orders and preview refund eligibility" />
+					<CardHeader title="Refunds Portal" subheader="Search by customer phone or name to load recent orders and preview refund eligibility" />
 					<CardContent>
 						{error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-						<Box component="form" onSubmit={onSearch} sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-							<TextField label="Customer Phone" value={phone} onChange={(e) => setPhone(e.target.value)} fullWidth size="small" />
-							<Button type="submit" variant="contained" disabled={loading || !phone.trim()} sx={{ whiteSpace: 'nowrap' }}>{loading ? <CircularProgress size={18} /> : 'Search'}</Button>
+						<Box component="form" onSubmit={onSearch} sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
+							<TextField
+								select
+								label="Search by"
+								size="small"
+								sx={{ width: 140 }}
+								value={searchMode}
+								onChange={(e) => setSearchMode(e.target.value as 'phone'|'name')}
+							>
+								<MenuItem value="phone">Phone</MenuItem>
+								<MenuItem value="name">Name</MenuItem>
+							</TextField>
+							<TextField
+								label={searchMode === 'phone' ? 'Customer Phone' : 'Customer Name'}
+								value={query}
+								onChange={(e) => setQuery(e.target.value)}
+								fullWidth
+								size="small"
+							/>
+							<Button type="submit" variant="contained" disabled={loading || !query.trim()} sx={{ whiteSpace: 'nowrap' }}>{loading ? <CircularProgress size={18} /> : 'Search'}</Button>
 						</Box>
 					</CardContent>
 				</Card>
@@ -362,7 +384,7 @@ export default function AgentDashboard() {
 			{/* Cashback Tab */}
 			{tab === 1 && (
 				<Card sx={{ mb: 2 }}>
-					<CardHeader title="Cashback" subheader={phone ? `Customer phone: ${phone}` : undefined} />
+					<CardHeader title="Cashback" subheader={query ? `Customer ${searchMode}: ${query}` : undefined} />
 					<CardContent>
 						{cashbackSummary ? (
 							<Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
