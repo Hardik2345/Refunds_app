@@ -336,8 +336,8 @@ exports.refundOrderByPhone = async (req, res) => {
     // After successful refund, append informative tags to the order (best-effort)
     try {
       const tags = [
-        'refunded_via_portal',
-        `refunded_by:${req.user?.name || req.user?.email || req.user?._id || 'unknown'}`,
+        'Techit_refunds_app',
+        `refunded_by:${req.user?.email}`,
         `${Array.isArray(lineItems) && lineItems.length > 0 ? 'partial' : 'full'}`
       ];
       await appendOrderTags({
