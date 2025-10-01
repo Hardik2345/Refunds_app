@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Box, Grid, Card, CardHeader, CardContent, CardActions, Button, TextField, Typography, Alert, Snackbar, CircularProgress, Chip, Tooltip, Checkbox, InputAdornment, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import { Box, Grid, Card, CardHeader, CardContent, CardActions, Button, TextField, Typography, Alert, Snackbar, CircularProgress, Chip, Tooltip, Checkbox, InputAdornment, Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab } from '@mui/material';
 import api from '../apiClient';
 
 interface OrderLineItem { id: number; name: string; quantity: number; price: string; }
@@ -16,6 +16,9 @@ export default function AgentDashboard() {
 	const [loading, setLoading] = useState(false);
 	const [snack, setSnack] = useState<{ open: boolean; message: string; severity: 'success'|'error'|'info' } | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	// Tabs: 0 = Orders, 1 = Cashback
+	const [tab, setTab] = useState(0);
+	const [cashbackSummary, setCashbackSummary] = useState<{ totalCredits: number | null; totalSpentCredits: number | null } | null>(null);
 	// Partial refund dialog state
 	const [partialDlg, setPartialDlg] = useState<{ open: boolean; order: OrderSummary | null }>({ open: false, order: null });
 	// Selection state per orderId -> per lineItemId -> { selected, quantity, amount }
@@ -62,11 +65,19 @@ export default function AgentDashboard() {
 			if (found.length) {
 				const items = found.map(o => ({ orderId: o.id }));
 				const p = await api.post<{ results: PreviewResult[] }>('/refund/preview/bulk', { phone, items });
-				const byId: Record<string, PreviewResult> = {};
+					const byId: Record<string, PreviewResult> = {};
+					let summary: { totalCredits: number | null; totalSpentCredits: number | null } | null = null;
 				for (const r of p.data.results) {
 					if (r && r.orderId != null) byId[String(r.orderId)] = r;
+						// Capture global cashback from first result that has it
+						const tc = r?.ctxHints?.totalCredits;
+						const ts = r?.ctxHints?.totalSpentCredits;
+						if (!summary && (tc != null || ts != null)) {
+							summary = { totalCredits: tc ?? null, totalSpentCredits: ts ?? null };
+						}
 				}
 				setPreview(byId);
+					setCashbackSummary(summary);
 			}
 		} catch (err: any) {
 			setError(err?.response?.data?.error || 'Failed to fetch orders');
@@ -268,22 +279,26 @@ export default function AgentDashboard() {
 				<Alert severity="info" sx={{ mb: 2 }}>No orders found.</Alert>
 			)}
 
-			{/* Results Grid */}
-			<Grid container spacing={2}>
-				{merged.map(({ order, preview: p }) => (
-					<Grid item xs={12} md={6} lg={4} key={order.id} sx={{ display: 'flex' }}>
-						<Card sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
+			{/* Tabs for Orders and Cashback */}
+			<Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 1 }}>
+				<Tabs value={tab} onChange={(_, v) => setTab(v)}>
+					<Tab label="Orders" />
+					<Tab label="Cashback" />
+				</Tabs>
+			</Box>
+
+			{/* Orders Tab */}
+			{tab === 0 && (
+				<Grid container spacing={2}>
+					{merged.map(({ order, preview: p }) => (
+						<Grid item xs={12} md={6} lg={4} key={order.id} sx={{ display: 'flex' }}>
+							<Card sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
 							<CardHeader title={order.name} subheader={new Date(order.created_at).toLocaleString()} />
 							<CardContent sx={{ flexGrow: 1 }}>
 								<Typography variant="body2">Subtotal: {order.current_subtotal_price}</Typography>
 								<Typography variant="body2">Financial: {order.financial_status} | Fulfillment: {order.fulfillment_status}</Typography>
 								{order.customer && (
 									<Typography variant="body2">Customer: {order.customer.first_name} {order.customer.last_name} ({order.customer.email || 'N/A'})</Typography>
-								)}
-								{p?.ctxHints && (p.ctxHints.totalCredits != null || p.ctxHints.totalSpentCredits != null) && (
-									<Typography variant="caption" color="text.secondary">
-										current balance: {p.ctxHints.totalCredits != null ? p.ctxHints.totalCredits : '—'}, total spent: {p.ctxHints.totalSpentCredits != null ? p.ctxHints.totalSpentCredits : '—'}
-									</Typography>
 								)}
 								{p && p.decision && (
 									<Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
@@ -337,6 +352,30 @@ export default function AgentDashboard() {
 					</Grid>
 				))}
 			</Grid>
+			)}
+
+			{/* Cashback Tab */}
+			{tab === 1 && (
+				<Card sx={{ mb: 2 }}>
+					<CardHeader title="Cashback" subheader={phone ? `Customer phone: ${phone}` : undefined} />
+					<CardContent>
+						{cashbackSummary ? (
+							<Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+								<Box sx={{ p: 2, border: '1px dashed', borderColor: 'divider', borderRadius: 1 }}>
+									<Typography variant="overline" color="text.secondary">Current balance</Typography>
+									<Typography variant="h6">{cashbackSummary.totalCredits ?? '—'}</Typography>
+								</Box>
+								<Box sx={{ p: 2, border: '1px dashed', borderColor: 'divider', borderRadius: 1 }}>
+									<Typography variant="overline" color="text.secondary">Total spent</Typography>
+									<Typography variant="h6">{cashbackSummary.totalSpentCredits ?? '—'}</Typography>
+								</Box>
+							</Box>
+						) : (
+							<Alert severity="info">No cashback information available for this customer.</Alert>
+						)}
+					</CardContent>
+				</Card>
+			)}
 
 			{/* Snackbar */}
 			{snack && (
