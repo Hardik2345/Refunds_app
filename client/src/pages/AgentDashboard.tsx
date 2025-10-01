@@ -13,7 +13,7 @@ interface RuleDecision { outcome: 'ALLOW' | 'DENY' | 'REQUIRE_APPROVAL'; reason?
 interface PreviewResult { orderId: number | null; decision: RuleDecision | null; requiresApproval: boolean | null; ctxHints?: { orderId?: number | null; rulesVersion?: number; ruleSetId?: string | null; attemptsToday?: number | null; daysSinceDelivery?: number | null; totalCredits?: number | null; totalSpentCredits?: number | null } | null; error?: string | null }
 
 export default function AgentDashboard() {
-	const [searchMode, setSearchMode] = useState<'phone'|'name'>('phone');
+	const [searchMode, setSearchMode] = useState<'phone'|'orderName'>('phone');
 	const [query, setQuery] = useState('');
 	const [orders, setOrders] = useState<OrderSummary[] | null>(null);
 	const [preview, setPreview] = useState<Record<string, PreviewResult>>({});
@@ -65,13 +65,13 @@ export default function AgentDashboard() {
 		setSelectionPreview({});
 		setSelections({});
 		try {
-			const params = searchMode === 'phone' ? { phone: query } : { name: query };
+			const params = searchMode === 'phone' ? { phone: query } : { orderName: query };
 			const res = await api.get<GetOrdersResponse>('/orders', { params });
 			const found = res.data.orders || [];
 			setOrders(found);
 			if (found.length) {
 				const items = found.map(o => ({ orderId: o.id }));
-				const body = searchMode === 'phone' ? { phone: query, items } : { name: query, items };
+				const body = searchMode === 'phone' ? { phone: query, items } : { items };
 				const p = await api.post<{ results: PreviewResult[] }>('/refund/preview/bulk', body);
 					const byId: Record<string, PreviewResult> = {};
 					let summary: { totalCredits: number | null; totalSpentCredits: number | null } | null = null;
@@ -103,7 +103,7 @@ export default function AgentDashboard() {
 
 	async function onRefund(orderId: number) {
 		try {
-			const payload = searchMode === 'phone' ? { phone: query, orderId } : { name: query, orderId };
+			const payload = searchMode === 'phone' ? { phone: query, orderId } : { orderId };
 			const res = await api.post('/refund', payload);
 			if (res.status === 200) {
 				setResultDlg({ open: true, status: 'success', message: 'Refund executed successfully' });
@@ -181,7 +181,7 @@ export default function AgentDashboard() {
 					...(Number.isFinite(amountNum) ? { amount: Number(amountNum.toFixed(2)) } : {})
 				};
 			});
-		const base = searchMode === 'phone' ? { phone: query } : { name: query };
+		const base = searchMode === 'phone' ? { phone: query } : {};
 		return { ...base, orderId, lineItems: items } as const;
 	}
 
@@ -273,7 +273,7 @@ export default function AgentDashboard() {
 			{/* Search Panel */}
 			<Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
 				<Card sx={{ width: '100%', maxWidth: 720 }}>
-					<CardHeader title="Refunds Portal" subheader="Search by customer phone or name to load recent orders and preview refund eligibility" />
+					<CardHeader title="Refunds Portal" subheader="Search by customer phone or order name to load recent orders and preview refund eligibility" />
 					<CardContent>
 						{error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 						<Box component="form" onSubmit={onSearch} sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
@@ -283,13 +283,13 @@ export default function AgentDashboard() {
 								size="small"
 								sx={{ width: 140 }}
 								value={searchMode}
-								onChange={(e) => setSearchMode(e.target.value as 'phone'|'name')}
+								onChange={(e) => setSearchMode(e.target.value as 'phone'|'orderName')}
 							>
 								<MenuItem value="phone">Phone</MenuItem>
-								<MenuItem value="name">Name</MenuItem>
+								<MenuItem value="orderName">Order Name</MenuItem>
 							</TextField>
 							<TextField
-								label={searchMode === 'phone' ? 'Customer Phone' : 'Customer Name'}
+								label={searchMode === 'phone' ? 'Customer Phone' : 'Order Name (#1234)'}
 								value={query}
 								onChange={(e) => setQuery(e.target.value)}
 								fullWidth
@@ -384,7 +384,7 @@ export default function AgentDashboard() {
 			{/* Cashback Tab */}
 			{tab === 1 && (
 				<Card sx={{ mb: 2 }}>
-					<CardHeader title="Cashback" subheader={query ? `Customer ${searchMode}: ${query}` : undefined} />
+					<CardHeader title="Cashback" subheader={query ? (searchMode === 'phone' ? `Customer phone: ${query}` : `Order name: ${query}`) : undefined} />
 					<CardContent>
 						{cashbackSummary ? (
 							<Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>

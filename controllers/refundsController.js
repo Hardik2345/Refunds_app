@@ -132,29 +132,12 @@ async function getOrdersByPhone(tenant, phone) {
   return ordersResponse.data.orders;
 }
 
-// 🔹 Utility: Get orders for a customer by full/partial name
-async function getOrdersByName(tenant, name) {
-  const customerSearchUrl = `https://${tenant.shopDomain}.myshopify.com/admin/api/${tenant.apiVersion}/customers/search.json`;
-  const customerResponse = await axios.get(customerSearchUrl, {
-    params: { query: `name:${name}` },
-    headers: { "X-Shopify-Access-Token": tenant.accessToken },
-  });
-
-  if (!customerResponse.data.customers.length) return null;
-  const customerId = customerResponse.data.customers[0].id;
-
-  const ordersUrl = `https://${tenant.shopDomain}.myshopify.com/admin/api/${tenant.apiVersion}/orders.json?customer_id=${customerId}&status=any&limit=5`;
-  const ordersResponse = await axios.get(ordersUrl, {
-    headers: { "X-Shopify-Access-Token": tenant.accessToken },
-  });
-
-  return ordersResponse.data.orders;
-}
+// (Removed customer name search utility)
 
 // 🔹 Controller: Get Orders
 // controllers/refundsController.js (replace getOrders with this version)
 exports.getOrders = async (req, res) => {
-  const { startDate, endDate, limit = 10, page_info, phone, name, orderName } = req.query;
+  const { startDate, endDate, limit = 10, page_info, phone, orderName } = req.query;
 
   try {
     const tenant = req.tenant; // ✅ injected by middleware
@@ -240,7 +223,11 @@ exports.getOrders = async (req, res) => {
           // Keep parity with your REST mapping: price after discount allocations (per unit)
           const net = Math.max(0, base - disc);
           return {
-            id: li.id,
+            id: (() => {
+              const gid = String(li.id || '');
+              const m = gid.match(/\/(\d+)$/);
+              return m ? Number(m[1]) : li.id;
+            })(),
             name: li.name,
             quantity: li.quantity,
             price: net.toFixed(2),
@@ -248,7 +235,11 @@ exports.getOrders = async (req, res) => {
         });
 
         return {
-          id: node.id, // GraphQL GID (e.g., gid://shopify/Order/1234567890)
+          id: (() => {
+            const gid = String(node.id || '');
+            const m = gid.match(/\/(\d+)$/);
+            return m ? Number(m[1]) : node.id;
+          })(), // numeric id for refund flows
           name: node.name,
           created_at: node.createdAt,
           current_subtotal_price: node.currentSubtotalPriceSet?.presentmentMoney?.amount ?? null,
@@ -276,16 +267,16 @@ exports.getOrders = async (req, res) => {
 
     // ---------- Branch B: Your existing REST paths (phone OR date range) ----------
     let requestUrl;
-    if (phone || name) {
+    if (phone) {
       // Find customer by phone
       const customerSearchUrl = `https://${tenant.shopDomain}.myshopify.com/admin/api/${tenant.apiVersion}/customers/search.json`;
       const customerResponse = await axios.get(customerSearchUrl, {
-        params: phone ? { query: `phone:${phone}` } : { query: `name:${name}` },
+        params: { query: `phone:${phone}` },
         headers: { "X-Shopify-Access-Token": tenant.accessToken },
       });
 
       if (!customerResponse.data.customers.length) {
-        return res.status(404).json({ error: phone ? "No customer found with this phone number." : "No customer found with this name." });
+        return res.status(404).json({ error: "No customer found with this phone number." });
       }
       const customerId = customerResponse.data.customers[0].id;
 
@@ -305,7 +296,7 @@ exports.getOrders = async (req, res) => {
       requestUrl = `https://${tenant.shopDomain}.myshopify.com/admin/api/${tenant.apiVersion}/orders.json?${queryParams.toString()}`;
     } else {
       return res.status(400).json({
-        error: "Please provide either a phone number, a customer name, an orderName, or a date range.",
+        error: "Please provide either a phone number, an orderName, or a date range.",
       });
     }
 
@@ -366,7 +357,6 @@ exports.refundOrderByPhone = async (req, res) => {
         requester: req.user._id,
         payload: {
           phone: req.body.phone || null,
-          name: req.body.name || null,
           orderId: req.body.orderId || null,
           amount: Number(req.body.amount)
         },
@@ -382,7 +372,7 @@ exports.refundOrderByPhone = async (req, res) => {
     }
 
     const tenant = req.tenant;
-  const { phone, name, orderId, lineItems } = req.body;
+  const { phone, orderId, lineItems } = req.body;
 
     // --- Resolve target order by orderId (preferred) or by phone ---
     let targetOrder = null;
@@ -398,15 +388,15 @@ exports.refundOrderByPhone = async (req, res) => {
       if (!targetOrder) {
         return res.status(404).json({ error: "Order not found for provided orderId." });
       }
-    } else if (phone || name) {
+    } else if (phone) {
       // Legacy path: find by phone -> pick first or matching orderId (if provided)
-      const orders = phone ? await getOrdersByPhone(tenant, phone) : await getOrdersByName(tenant, name);
+      const orders = await getOrdersByPhone(tenant, phone);
       if (!orders || orders.length === 0) {
-        return res.status(404).json({ error: phone ? "No orders found for this phone number." : "No orders found for this customer name." });
+        return res.status(404).json({ error: "No orders found for this phone number." });
       }
       targetOrder = orders[0];
     } else {
-      return res.status(400).json({ error: "Provide either orderId, phone, or name." });
+      return res.status(400).json({ error: "Provide either orderId or phone." });
     }
 
     // Optional: early bail if (accidentally) refunded
@@ -604,12 +594,12 @@ exports.approvePendingRefund = async (req, res) => {
       return res.status(404).json({ error: 'Pending refund not found or not pending' });
     }
 
-  const { phone, name, orderId, lineItems } = pending.payload;
+  const { phone, orderId, lineItems } = pending.payload;
 
     // --- Fetch target order again (fresh check) ---
-    const orders = phone ? await getOrdersByPhone(tenant, phone) : await getOrdersByName(tenant, name);
+    const orders = await getOrdersByPhone(tenant, phone);
     if (!orders || orders.length === 0) {
-      return res.status(404).json({ error: phone ? 'No orders found for this phone number.' : 'No orders found for this customer name.' });
+      return res.status(404).json({ error: 'No orders found for this phone number.' });
     }
     const targetOrder = orderId
       ? orders.find(o => String(o.id) === String(orderId))
@@ -789,7 +779,6 @@ exports.bulkPreviewRefunds = async (req, res) => {
     const tenant = req.tenant;
     const user = req.user;
   const defaultPhone = req.body?.phone || null;
-  const defaultName = req.body?.name || null;
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
 
     if (!items.length) {
@@ -802,7 +791,6 @@ exports.bulkPreviewRefunds = async (req, res) => {
     const results = await mapWithConcurrency(items, CONCURRENCY, async (item) => {
       const payload = {
         phone: item.phone || defaultPhone || null,
-        name: item.name || defaultName || null,
         orderId: item.orderId || null,
         amount: item.amount,
         lineItems: Array.isArray(item.lineItems) ? item.lineItems : []

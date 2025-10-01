@@ -49,9 +49,9 @@ async function buildRefundContext(req, res, next) {
     const tenant = req.tenant;
     if (!tenant) return res.status(500).json({ error: "Tenant not loaded" });
 
-    const { phone, name, orderId, amount, lineItems } = req.body || {};
-    if (!phone && !name && !orderId) {
-      return res.status(400).json({ error: "Provide phone, name, or orderId for refund context" });
+    const { phone, orderId, amount, lineItems } = req.body || {};
+    if (!phone && !orderId) {
+      return res.status(400).json({ error: "Provide phone or orderId for refund context" });
     }
 
     // ---- Load active ruleset from the model (with cache) ----
@@ -71,7 +71,7 @@ async function buildRefundContext(req, res, next) {
     const apiVersion = pickApiVersion(tenant);
     const base = `https://${tenant.shopDomain}.myshopify.com/admin/api/${apiVersion}`;
 
-    // Resolve customer by phone or name (if provided)
+    // Resolve customer by phone (if provided)
     let customerId = null;
     if (phone) {
       try {
@@ -85,19 +85,6 @@ async function buildRefundContext(req, res, next) {
         }
       } catch (_) {
         customerId = null; // best effort in dev
-      }
-    } else if (name) {
-      try {
-        const url = `https://${tenant.shopDomain}.myshopify.com/admin/api/2024-07/customers/search.json`;
-        const resp = await axios.get(url, {
-          params: { query: `name:${name}` },
-          headers: shopHeaders(tenant),
-        });
-        if (resp.data.customers?.length) {
-          customerId = resp.data.customers[0].id;
-        }
-      } catch (_) {
-        customerId = null;
       }
     }
 
@@ -164,7 +151,6 @@ async function buildRefundContext(req, res, next) {
 
     // derive a stable key (use phone for now; in prod, hash phone/email)
   if (req.body?.phone) customerKey = `phone:${String(req.body.phone)}`;
-  else if (req.body?.name) customerKey = `name:${String(req.body.name).toLowerCase()}`;
   else if (order?.customer?.email) customerKey = `email:${String(order.customer.email).toLowerCase()}`;
 
     if (customerKey) {
