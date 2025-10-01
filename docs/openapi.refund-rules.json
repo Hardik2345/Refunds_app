@@ -1,0 +1,208 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Refunds API - Refund Rules",
+    "version": "1.0.0",
+    "description": "Detailed documentation for refund rules lifecycle and CRUD."
+  },
+  "servers": [{ "url": "http://localhost:6001" }],
+  "tags": [ { "name": "RefundRules", "description": "Refund rules endpoints" } ],
+  "components": {
+    "securitySchemes": { "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" } },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": { "status": { "type": "string" }, "message": { "type": "string" } }
+      },
+      "RefundRulesPayload": {
+        "type": "object",
+        "properties": {
+          "mode": { "type": "string", "enum": ["observe", "warn", "enforce"], "default": "observe" },
+          "maxRefundPercent": { "type": "number", "minimum": 0, "maximum": 100, "default": 30 },
+          "maxRefundsPerDay": { "type": "integer", "minimum": 0, "default": 2 },
+          "allowPaymentMethods": { "type": "array", "items": { "type": "string" }, "default": ["card", "upi", "cod"] },
+          "requireSupervisorAbovePercent": { "type": "number", "minimum": 0, "maximum": 100, "default": 20 },
+          "bypassPercentCapForPartials": { "type": "boolean", "default": true },
+          "refundWindowDays": { "type": "integer", "minimum": 0, "nullable": true },
+          "blockIfAlreadyRefunded": { "type": "boolean", "default": true },
+          "maxLifetimeRefundCount": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "RefundRulesDoc": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "tenant": { "type": "string", "nullable": true },
+          "name": { "type": "string", "default": "Refund Rules" },
+          "version": { "type": "integer" },
+          "isActive": { "type": "boolean" },
+          "createdBy": { "type": "string", "nullable": true },
+          "rules": { "$ref": "#/components/schemas/RefundRulesPayload" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "RefundRulesDocResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "data": { "oneOf": [
+            { "$ref": "#/components/schemas/RefundRulesDoc" },
+            { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/RefundRulesDoc" } } }
+          ] }
+        }
+      },
+      "RefundRulesListResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "results": { "type": "integer" },
+          "data": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/RefundRulesDoc" } } } }
+        }
+      },
+      "PublishRequest": {
+        "type": "object",
+        "description": "Either pass the rules object at root or inside { rules }",
+        "properties": { "rules": { "$ref": "#/components/schemas/RefundRulesPayload" } }
+      },
+      "SimulateRequest": {
+        "type": "object",
+        "properties": {
+          "ctx": { "type": "object", "description": "Refund evaluation context" },
+          "rules": { "$ref": "#/components/schemas/RefundRulesPayload" }
+        }
+      },
+      "SimulateResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "rules": { "$ref": "#/components/schemas/RefundRulesPayload" },
+              "decision": { "type": "object", "description": "Decision details from evaluator" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/v1/refund-rules/active": {
+      "get": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["RefundRules"],
+        "summary": "Get active ruleset for tenant (with platform fallback)",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RefundRulesDocResponse" } } } },
+          "404": { "description": "No active ruleset", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/refund-rules/versions": {
+      "get": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["RefundRules"],
+        "summary": "List recent ruleset versions for tenant",
+        "parameters": [ { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 20, "maximum": 100 } } ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string" }, "data": { "type": "array", "items": { "$ref": "#/components/schemas/RefundRulesDoc" } } } } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/refund-rules/publish": {
+      "post": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["RefundRules"],
+        "summary": "Publish a new active ruleset version",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublishRequest" } } } },
+        "responses": {
+          "201": { "description": "Published", "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string" }, "data": { "$ref": "#/components/schemas/RefundRulesDoc" } } } } } },
+          "400": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/refund-rules/simulate": {
+      "post": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["RefundRules"],
+        "summary": "Simulate decisions using active rules plus optional overrides",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SimulateRequest" } } } },
+        "responses": {
+          "200": { "description": "Result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SimulateResponse" } } } },
+          "400": { "description": "Bad request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/refund-rules/deactivate": {
+      "post": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["RefundRules"],
+        "summary": "Deactivate the current active ruleset",
+        "responses": {
+          "200": { "description": "Deactivated", "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string" } } } } } },
+          "404": { "description": "No active ruleset", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "400": { "description": "Bad request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+
+    "/api/v1/refund-rules": {
+      "get": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["RefundRules"],
+        "summary": "List rules documents (admin)",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 100 } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "example": "-createdAt" } },
+          { "name": "fields", "in": "query", "schema": { "type": "string", "example": "name,version,isActive" } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RefundRulesListResponse" } } } }
+        }
+      },
+      "post": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["RefundRules"],
+        "summary": "Create rules document (admin)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "rules": { "$ref": "#/components/schemas/RefundRulesPayload" }, "tenant": { "type": "string", "nullable": true }, "name": { "type": "string" }, "isActive": { "type": "boolean" }, "version": { "type": "integer" }, "createdBy": { "type": "string", "nullable": true } } } } } },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string" }, "data": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/RefundRulesDoc" } } } } } } } }
+        }
+      }
+    },
+    "/api/v1/refund-rules/{id}": {
+      "get": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["RefundRules"],
+        "summary": "Get rules document (admin)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string" }, "data": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/RefundRulesDoc" } } } } } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "patch": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["RefundRules"],
+        "summary": "Update rules document (admin)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } } },
+        "responses": {
+          "200": { "description": "Updated", "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string" }, "data": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/RefundRulesDoc" } } } } } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "delete": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["RefundRules"],
+        "summary": "Delete rules document (admin)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "204": { "description": "Deleted" }, "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } } }
+      }
+    }
+  }
+}

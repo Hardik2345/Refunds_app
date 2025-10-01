@@ -1,0 +1,14 @@
+html, body, #root {
+  height: 100%;
+}
+
+/* Keep things minimal; let MUI Theme control colors/typography */
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #f7f8fa;
+}
+
+a {
+  text-decoration: none;
+}

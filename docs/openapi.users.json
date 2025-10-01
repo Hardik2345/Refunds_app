@@ -1,0 +1,286 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Refunds API - Users & Auth",
+    "version": "1.0.0",
+    "description": "Definitive documentation for Users & Auth endpoints derived from code."
+  },
+  "servers": [{ "url": "http://localhost:6001" }],
+  "tags": [
+    { "name": "Auth", "description": "Signup, login, logout and password flows" },
+    { "name": "Users", "description": "Self-service and admin user management" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "error" },
+          "message": { "type": "string" },
+          "stack": { "type": "string" },
+          "error": { "type": "object" }
+        }
+      },
+      "TokenResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "token": { "type": "string" },
+          "data": { "type": "object", "properties": { "user": { "$ref": "#/components/schemas/UserPublic" } } }
+        }
+      },
+      "UserPublic": {
+        "type": "object",
+        "properties": {
+          "_id": { "type": "string" },
+          "name": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "phone": { "type": "string", "nullable": true },
+          "role": { "type": "string", "enum": ["super_admin", "refund_agent", "platform_admin"] },
+          "storeId": { "type": "string", "nullable": true }
+        }
+      },
+      "SignupRequest": {
+        "type": "object",
+        "required": ["name", "email", "password", "passwordConfirm"],
+        "properties": {
+          "name": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "phone": { "type": "string" },
+          "storeId": { "type": "string", "description": "Required for non-platform_admin roles" },
+          "role": { "type": "string", "enum": ["super_admin", "refund_agent", "platform_admin"], "description": "Optional during signup, server may set default" },
+          "password": { "type": "string", "minLength": 8 },
+          "passwordConfirm": { "type": "string" }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string" }
+        }
+      },
+      "ForgotPasswordRequest": {
+        "type": "object",
+        "required": ["email"],
+        "properties": { "email": { "type": "string", "format": "email" } }
+      },
+      "ResetPasswordRequest": {
+        "type": "object",
+        "required": ["password", "passwordConfirm"],
+        "properties": {
+          "password": { "type": "string", "minLength": 8 },
+          "passwordConfirm": { "type": "string" }
+        }
+      },
+      "UpdateMeRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "email": { "type": "string", "format": "email" }
+        },
+        "additionalProperties": false
+      },
+      "CreateUserRequest": {
+        "type": "object",
+        "required": ["name", "email", "password", "passwordConfirm"],
+        "properties": {
+          "name": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "phone": { "type": "string" },
+          "storeId": { "type": "string", "description": "Required unless role is platform_admin" },
+          "role": { "type": "string", "enum": ["super_admin", "refund_agent", "platform_admin"], "default": "refund_agent" },
+          "password": { "type": "string", "minLength": 8 },
+          "passwordConfirm": { "type": "string" }
+        }
+      },
+      "UsersListResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "results": { "type": "integer" },
+          "data": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/UserPublic" } } } }
+        }
+      },
+      "UserDocResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "data": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/UserPublic" } } }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/v1/users/signup": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Self-signup",
+        "description": "Creates a user, sends welcome email, and returns JWT (cookie + body).",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SignupRequest" } } } },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TokenResponse" } } } },
+          "400": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/users/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Login",
+        "description": "Returns JWT in cookie and body.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } } } },
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TokenResponse" } } } },
+          "400": { "description": "Missing credentials", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Incorrect email or password", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/users/logout": { "get": { "tags": ["Auth"], "summary": "Logout", "responses": { "200": { "description": "Logged out" } } } },
+    "/api/v1/users/forgotPassword": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Forgot password",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ForgotPasswordRequest" } } } },
+        "responses": {
+          "200": { "description": "Reset email sent" },
+          "404": { "description": "Email not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/users/resetPassword/{token}": {
+      "patch": {
+        "tags": ["Auth"],
+        "summary": "Reset password",
+        "parameters": [{ "name": "token", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResetPasswordRequest" } } } },
+        "responses": {
+          "200": { "description": "Password reset", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TokenResponse" } } } },
+          "400": { "description": "Invalid/expired token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+
+    "/api/v1/users/updateMyPassword": {
+      "patch": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Users"],
+        "summary": "Update my password",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ResetPasswordRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TokenResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/users/me": {
+      "get": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Users"],
+        "summary": "Get current user",
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserDocResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/users/updateMe": {
+      "patch": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Users"],
+        "summary": "Update my profile",
+        "description": "Allowed fields: name, email.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateMeRequest" } } } },
+        "responses": {
+          "200": { "description": "Updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserDocResponse" } } } },
+          "400": { "description": "Invalid fields", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/users/deleteMe": {
+      "delete": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Users"],
+        "summary": "Deactivate my account",
+        "responses": {
+          "204": { "description": "Deactivated" },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+
+    "/api/v1/users": {
+      "get": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Users"],
+        "summary": "List users (admins)",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 100 } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "example": "-createdAt" } },
+          { "name": "fields", "in": "query", "schema": { "type": "string", "example": "name,email" } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UsersListResponse" } } } },
+          "403": { "description": "Forbidden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "post": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Users"],
+        "summary": "Create user (admins)",
+        "description": "Only super_admin and platform_admin. storeId required unless role is platform_admin.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateUserRequest" } } } },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string" }, "data": { "type": "object", "properties": { "user": { "$ref": "#/components/schemas/UserPublic" } } } } } } } },
+          "400": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Forbidden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/users/{id}": {
+      "get": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Users"],
+        "summary": "Get user (admins)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserDocResponse" } } } },
+          "403": { "description": "Forbidden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "patch": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Users"],
+        "summary": "Update user (admins)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserDocResponse" } } } },
+          "403": { "description": "Forbidden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "delete": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Users"],
+        "summary": "Delete user (admins)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "204": { "description": "Deleted" },
+          "403": { "description": "Forbidden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    }
+  }
+}

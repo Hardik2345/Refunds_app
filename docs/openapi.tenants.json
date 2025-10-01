@@ -1,0 +1,153 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Refunds API - Tenants",
+    "version": "1.0.0",
+    "description": "Comprehensive documentation for Tenant CRUD endpoints."
+  },
+  "servers": [{ "url": "http://localhost:6001" }],
+  "tags": [ { "name": "Tenants", "description": "Tenant management (admins)" } ],
+  "components": {
+    "securitySchemes": { "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" } },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": { "status": { "type": "string" }, "message": { "type": "string" } }
+      },
+      "Tenant": {
+        "type": "object",
+        "properties": {
+          "_id": { "type": "string" },
+          "name": { "type": "string" },
+          "shopDomain": { "type": "string" },
+          "apiVersion": { "type": "string", "default": "2025-07" },
+          "apiKey": { "type": "string" },
+          "accessToken": { "type": "string", "description": "Stored encrypted; getter decrypts in JSON" },
+          "apiSecret": { "type": "string", "description": "Stored encrypted; getter decrypts in JSON" },
+          "settings": {
+            "type": "object",
+            "properties": {
+              "refundRules": { "type": "object" },
+              "cashbackRules": { "type": "object" }
+            }
+          },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["name", "shopDomain", "apiKey", "accessToken", "apiSecret"]
+      },
+      "TenantCreateRequest": {
+        "type": "object",
+        "required": ["name", "shopDomain", "apiKey", "accessToken", "apiSecret"],
+        "properties": {
+          "name": { "type": "string" },
+          "shopDomain": { "type": "string", "example": "example.myshopify.com" },
+          "apiVersion": { "type": "string", "default": "2025-07" },
+          "apiKey": { "type": "string" },
+          "accessToken": { "type": "string" },
+          "apiSecret": { "type": "string" },
+          "settings": {
+            "type": "object",
+            "properties": {
+              "refundRules": { "type": "object" },
+              "cashbackRules": { "type": "object" }
+            }
+          }
+        }
+      },
+      "TenantUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "shopDomain": { "type": "string" },
+          "apiVersion": { "type": "string" },
+          "apiKey": { "type": "string" },
+          "accessToken": { "type": "string" },
+          "apiSecret": { "type": "string" },
+          "settings": { "type": "object" }
+        }
+      },
+      "TenantDocResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "data": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/Tenant" } } }
+        }
+      },
+      "TenantListResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "results": { "type": "integer" },
+          "data": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Tenant" } } } }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/v1/tenants": {
+      "get": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Tenants"],
+        "summary": "List tenants (super_admin, platform_admin)",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 100 } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "example": "-createdAt" } },
+          { "name": "fields", "in": "query", "schema": { "type": "string", "example": "name,shopDomain,apiVersion" } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TenantListResponse" } } } },
+          "403": { "description": "Forbidden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "post": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Tenants"],
+        "summary": "Create tenant (super_admin, platform_admin)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TenantCreateRequest" } } } },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TenantDocResponse" } } } },
+          "400": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Forbidden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/tenants/{id}": {
+      "get": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Tenants"],
+        "summary": "Get tenant (super_admin, platform_admin)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TenantDocResponse" } } } },
+          "403": { "description": "Forbidden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "patch": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Tenants"],
+        "summary": "Update tenant (super_admin, platform_admin)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TenantUpdateRequest" } } } },
+        "responses": {
+          "200": { "description": "Updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TenantDocResponse" } } } },
+          "403": { "description": "Forbidden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "delete": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Tenants"],
+        "summary": "Delete tenant (super_admin, platform_admin)",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "204": { "description": "Deleted" },
+          "403": { "description": "Forbidden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,243 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Refund Stats API - Activity Logs",
+    "version": "1.1.1",
+    "description": "Tenant-scoped activity logs summarizing refund activity per customer and user. Tracks aggregate counters, last snapshots (including lastIp), a compact ring buffer of recent attempts with outcomes and errors, and retry/backoff scheduling metadata for failed executions. Responses may populate tenant with its name for display."
+  },
+  "servers": [{ "url": "http://localhost:6001" }],
+  "tags": [
+    { "name": "RefundStats", "description": "Activity logs (tenant scoped)" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "schemas": {
+      "Error": { "type": "object", "properties": { "status": { "type": "string" }, "message": { "type": "string" }, "error": { "type": "string" } } },
+      "UserRef": {
+        "type": "object",
+        "properties": {
+          "_id": { "type": "string" },
+          "name": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "role": { "type": "string", "description": "User role (super_admin, platform_admin, user_admin, refund_agent)" }
+        }
+      },
+      "AttemptEntry": {
+        "type": "object",
+        "description": "Compact attempt entry (ring buffer)",
+        "properties": {
+          "at": { "type": "string", "format": "date-time" },
+          "action": { "type": "string", "enum": ["preview", "refund", "approve", "deny"] },
+          "outcome": { "type": "string", "enum": ["ALLOW", "DENY", "REQUIRE_APPROVAL", "ERROR", "SUCCESS"] },
+          "httpCode": { "type": "integer", "nullable": true },
+          "errorCode": { "type": "string", "nullable": true, "description": "Compact reason code (e.g., RATE_LIMIT, NETWORK, POLICY_DENIED, SHOPIFY_5XX)" },
+          "errorMsg": { "type": "string", "nullable": true, "description": "Truncated error message" },
+          "attemptNo": { "type": "integer", "description": "Retry number for this action" },
+          "backoffMs": { "type": "integer", "description": "Chosen backoff for next attempt" },
+          "orderId": { "type": "string", "nullable": true },
+          "amount": { "type": "number", "nullable": true },
+          "partial": { "type": "boolean", "nullable": true },
+          "ruleSetId": { "type": "string", "nullable": true },
+          "rulesVer": { "type": "integer", "nullable": true }
+        }
+      },
+      "RefundStat": {
+        "type": "object",
+        "description": "Aggregated refund activity per customer and user. Includes aggregate counters, last snapshots (e.g., lastOutcome, lastIp, lastOrderId), retry/backoff scheduling, correlation fields, and a compact attempt trail.",
+        "properties": {
+          "_id": { "type": "string" },
+          "user": { "$ref": "#/components/schemas/UserRef" },
+          "tenant": { "oneOf": [
+            { "type": "string", "description": "Tenant ID (ObjectId)" },
+            { "type": "object", "properties": { "_id": { "type": "string" }, "name": { "type": "string" } }, "description": "Populated tenant reference" }
+          ] },
+          "customer": { "type": "string", "description": "Customer identifier (e.g., phone or email key)" },
+          "totalCount": { "type": "integer", "description": "Total successful refunds" },
+          "successCount": { "type": "integer" },
+          "failureCount": { "type": "integer" },
+
+          "lastRefundAt": { "type": "string", "format": "date-time", "nullable": true },
+          "lastIp": { "type": "string", "nullable": true, "description": "IP from latest refund action (ensure trust proxy when behind proxies)" },
+          "lastOutcome": { "type": "string", "nullable": true, "enum": ["SUCCESS", "ERROR", "DENY", "REQUIRE_APPROVAL", null] },
+          "lastErrorCode": { "type": "string", "nullable": true },
+          "lastErrorMsg": { "type": "string", "nullable": true },
+          "lastOrderId": { "type": "string", "nullable": true },
+          "lastAmount": { "type": "number", "nullable": true },
+          "lastPartial": { "type": "boolean", "nullable": true },
+          "lastRuleSetId": { "type": "string", "nullable": true },
+          "lastRulesVer": { "type": "integer", "nullable": true },
+
+          "retryCount": { "type": "integer", "description": "Consecutive failures for current action" },
+          "nextRetryAt": { "type": "string", "format": "date-time", "nullable": true },
+          "retryBaseMs": { "type": "integer" },
+          "maxRetryMs": { "type": "integer" },
+          "lastAttemptAt": { "type": "string", "format": "date-time", "nullable": true },
+
+          "lastCorrelationId": { "type": "string", "nullable": true },
+          "lastRefundId": { "type": "string", "nullable": true },
+
+          "attempts": { "type": "array", "items": { "$ref": "#/components/schemas/AttemptEntry" }, "description": "Most recent attempts (bounded ring buffer, ~25)" },
+
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "RefundStatListResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "results": { "type": "integer" },
+          "data": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/RefundStat" } } } }
+        }
+      },
+      "RefundStatItemResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "data": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/RefundStat" } } }
+        }
+      }
+    },
+    "parameters": {
+      "X-Tenant-Id": {
+        "name": "x-tenant-id",
+        "in": "header",
+        "required": false,
+        "schema": { "type": "string" },
+        "description": "Tenant ID header used by platform_admin to select the active tenant. These endpoints are restricted to platform_admin and super_admin. For super_admin, this header is ignored and requests are bound to their assigned tenant."
+      },
+      "CommonSort": { "name": "sort", "in": "query", "schema": { "type": "string" }, "description": "Sort fields, e.g. -lastRefundAt,customer" },
+  "CommonFields": { "name": "fields", "in": "query", "schema": { "type": "string" }, "description": "Comma separated fields to include, e.g. user,customer,totalCount,lastRefundAt,lastIp" },
+      "CommonPage": { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+      "CommonLimit": { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 100 } },
+      "FilterUser": { "name": "user", "in": "query", "schema": { "type": "string" }, "description": "Filter by user id" },
+      "FilterCustomer": { "name": "customer", "in": "query", "schema": { "type": "string" }, "description": "Filter by customer identifier" },
+      "FilterTotalGte": { "name": "totalCount[gte]", "in": "query", "schema": { "type": "integer" }, "description": "Minimum total count" },
+      "FilterTotalLte": { "name": "totalCount[lte]", "in": "query", "schema": { "type": "integer" }, "description": "Maximum total count" },
+      "FilterLastAfter": { "name": "lastRefundAt[gte]", "in": "query", "schema": { "type": "string", "format": "date-time" }, "description": "Last refund at on/after this timestamp" },
+      "FilterLastBefore": { "name": "lastRefundAt[lte]", "in": "query", "schema": { "type": "string", "format": "date-time" }, "description": "Last refund at on/before this timestamp" },
+      "HelperDay": { "name": "day", "in": "query", "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }, "description": "Shorthand for a UTC day window (YYYY-MM-DD)" },
+      "HelperStart": { "name": "startDate", "in": "query", "schema": { "type": "string", "format": "date-time" }, "description": "UTC start of range" },
+      "HelperEnd": { "name": "endDate", "in": "query", "schema": { "type": "string", "format": "date-time" }, "description": "UTC end of range" }
+    }
+  },
+  "paths": {
+    "/api/v1/refund-stats": {
+      "get": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["RefundStats"],
+        "summary": "List refund activity stats (admins only)",
+        "description": "Restricted to platform_admin and super_admin.",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Tenant-Id" },
+          { "$ref": "#/components/parameters/FilterUser" },
+          { "$ref": "#/components/parameters/FilterCustomer" },
+          { "$ref": "#/components/parameters/FilterTotalGte" },
+          { "$ref": "#/components/parameters/FilterTotalLte" },
+          { "$ref": "#/components/parameters/FilterLastAfter" },
+          { "$ref": "#/components/parameters/FilterLastBefore" },
+          { "$ref": "#/components/parameters/HelperDay" },
+          { "$ref": "#/components/parameters/HelperStart" },
+          { "$ref": "#/components/parameters/HelperEnd" },
+          { "$ref": "#/components/parameters/CommonSort" },
+          { "$ref": "#/components/parameters/CommonFields" },
+          { "$ref": "#/components/parameters/CommonPage" },
+          { "$ref": "#/components/parameters/CommonLimit" }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RefundStatListResponse" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/refund-stats/user/{userId}": {
+      "get": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["RefundStats"],
+        "summary": "List refund stats for a specific user (admins only)",
+        "description": "Restricted to platform_admin and super_admin.",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Tenant-Id" },
+          { "name": "userId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "$ref": "#/components/parameters/HelperDay" },
+          { "$ref": "#/components/parameters/HelperStart" },
+          { "$ref": "#/components/parameters/HelperEnd" },
+          { "$ref": "#/components/parameters/CommonSort" },
+          { "$ref": "#/components/parameters/CommonFields" },
+          { "$ref": "#/components/parameters/CommonPage" },
+          { "$ref": "#/components/parameters/CommonLimit" }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RefundStatListResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/refund-stats/day/{date}": {
+      "get": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["RefundStats"],
+        "summary": "List refund stats for a specific UTC day (admins only)",
+        "description": "Restricted to platform_admin and super_admin.",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Tenant-Id" },
+          { "name": "date", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" } },
+          { "$ref": "#/components/parameters/CommonSort" },
+          { "$ref": "#/components/parameters/CommonFields" },
+          { "$ref": "#/components/parameters/CommonPage" },
+          { "$ref": "#/components/parameters/CommonLimit" }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RefundStatListResponse" } } } }
+        }
+      }
+    },
+    "/api/v1/refund-stats/{id}": {
+      "get": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["RefundStats"],
+        "summary": "Get a single refund stat document by id (admins only)",
+        "description": "Restricted to platform_admin and super_admin.",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Tenant-Id" },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RefundStatItemResponse" } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    }
+    ,
+    "/api/v1/refund-stats/tenant/{tenantId}": {
+      "get": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["RefundStats"],
+        "summary": "List refund stats for a specific tenant (admins only)",
+        "description": "Restricted to platform_admin and super_admin. Tenant-isolated view; the provided tenantId must match your resolved tenant (platform_admin must set X-Tenant-Id; super_admin is bound to their assigned tenant).",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Tenant-Id" },
+          { "name": "tenantId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "$ref": "#/components/parameters/FilterUser" },
+          { "$ref": "#/components/parameters/FilterCustomer" },
+          { "$ref": "#/components/parameters/FilterTotalGte" },
+          { "$ref": "#/components/parameters/FilterTotalLte" },
+          { "$ref": "#/components/parameters/FilterLastAfter" },
+          { "$ref": "#/components/parameters/FilterLastBefore" },
+          { "$ref": "#/components/parameters/HelperDay" },
+          { "$ref": "#/components/parameters/HelperStart" },
+          { "$ref": "#/components/parameters/HelperEnd" },
+          { "$ref": "#/components/parameters/CommonSort" },
+          { "$ref": "#/components/parameters/CommonFields" },
+          { "$ref": "#/components/parameters/CommonPage" },
+          { "$ref": "#/components/parameters/CommonLimit" }
+        ],
+        "responses": {
+          "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RefundStatListResponse" } } } },
+          "403": { "description": "Forbidden (tenant mismatch)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    }
+  }
+}
