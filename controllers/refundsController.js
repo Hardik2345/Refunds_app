@@ -250,8 +250,8 @@ exports.refundOrderByPhone = async (req, res) => {
 
     if (!targetOrder) return res.status(404).json({ error: "Order not found for this customer." });
 
-    const alreadyRefunded = await hasRefunds(tenant, targetOrder.id);
-    if (alreadyRefunded) return res.status(400).json({ error: "This order has already been refunded." });
+    // const alreadyRefunded = await hasRefunds(tenant, targetOrder.id);
+    // if (alreadyRefunded) return res.status(400).json({ error: "This order has already been refunded." });
 
     const transactions = await getOrderTransactions(tenant, targetOrder.id);
     const successfulTransaction = transactions.find((t) => t.status === "success");
