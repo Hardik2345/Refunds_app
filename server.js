@@ -55,7 +55,8 @@ const refundRulesRouter = require('./routes/refundRulesRoutes');
 
 const allowedOrigins = [
   "http://localhost:5173",        // React dev server
-  "https://your-frontend-domain.com" // deployed frontend
+  "https://refunds-app.vercel.app",
+  "https://vercel.com/raghav-kumars-projects-e04ee19e/refunds-app/HHyxuJsYERDcP89jaGPZbsEtxRVR"
 ];
 
 app.use(cors({
