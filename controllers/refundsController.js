@@ -146,6 +146,7 @@ exports.getOrders = async (req, res) => {
     if (orderName) {
       const gqlUrl = `https://${tenant.shopDomain}.myshopify.com/admin/api/${tenant.apiVersion}/graphql.json`;
 
+      // Build GraphQL query with cursor pagination
       const query = `
         query OrdersByName($first: Int!, $after: String, $q: String!) {
           orders(first: $first, after: $after, query: $q, sortKey: CREATED_AT, reverse: true) {
@@ -158,7 +159,15 @@ exports.getOrders = async (req, res) => {
                 currentSubtotalPriceSet { presentmentMoney { amount } }
                 financialStatus
                 displayFulfillmentStatus
-                customer { id firstName lastName email phone }
+
+                customer {
+                  id
+                  firstName
+                  lastName
+                  email
+                  phone
+                }
+
                 lineItems(first: 100) {
                   edges {
                     node {
@@ -166,6 +175,7 @@ exports.getOrders = async (req, res) => {
                       name
                       quantity
                       originalUnitPriceSet { presentmentMoney { amount } }
+                      // Sum of discounts on this line
                       discountAllocations {
                         allocatedAmountSet { presentmentMoney { amount } }
                       }
@@ -179,54 +189,44 @@ exports.getOrders = async (req, res) => {
         }
       `;
 
+      // Shopify order search syntax can be finicky with #; try quoted variants
       const raw = String(orderName).trim();
       const esc = raw.replace(/"/g, '\\"');
-      const digits = raw.replace(/[^\d]/g, ""); // for order_number
-
-      // Build candidate queries; ALWAYS add status:any
       const candidates = [];
-
-      // exact name with/without '#'
+      // prefer exact quoted
+      candidates.push(`name:"${esc}"`);
       if (raw.startsWith('#')) {
-        candidates.push(`name:"${esc}" status:any`);
-        candidates.push(`name:"${esc.replace(/^#/, '')}" status:any`);
+        candidates.push(`name:"${esc.replace(/^#/, '')}"`);
+        // unquoted fallbacks
+        candidates.push(`name:${esc}`);
+        candidates.push(`name:${esc.replace(/^#/, '')}`);
       } else {
-        candidates.push(`name:"#${esc}" status:any`);
-        candidates.push(`name:"${esc}" status:any`);
-      }
-
-      // order_number:1234 fallback (digits only)
-      if (digits) {
-        candidates.push(`order_number:${digits} status:any`);
+        candidates.push(`name:"#${esc}"`);
+        // unquoted fallbacks
+        candidates.push(`name:${esc}`);
+        candidates.push(`name:#${esc}`);
       }
 
       let edges = [];
       let pageInfoGql = { hasNextPage: false, endCursor: null };
-
       for (const qstr of candidates) {
         const variables = {
           first: Math.min(Number(limit) || 10, 100),
           after: page_info || null,
           q: qstr,
         };
-
         const resp = await axios.post(
           gqlUrl,
           { query, variables },
-          {
-            headers: {
-              "X-Shopify-Access-Token": tenant.accessToken,
-              "Content-Type": "application/json",
-            },
-          }
+          { headers: { "X-Shopify-Access-Token": tenant.accessToken } }
         );
-
         edges = resp.data?.data?.orders?.edges || [];
         pageInfoGql = resp.data?.data?.orders?.pageInfo || { hasNextPage: false, endCursor: null };
-        if (edges.length) break; // stop on first match set
+        if (edges.length) break;
       }
 
       const orders = edges.map(({ node }) => {
+        // Map fulfillment status to your previous REST-ish shape
         const fulfillment_status = node.displayFulfillmentStatus
           ? String(node.displayFulfillmentStatus).toLowerCase()
           : null;
@@ -239,6 +239,8 @@ exports.getOrders = async (req, res) => {
                 0
               )
             : 0;
+
+          // Keep parity with your REST mapping: price after discount allocations (per unit)
           const net = Math.max(0, base - disc);
           return {
             id: (() => {
@@ -257,7 +259,7 @@ exports.getOrders = async (req, res) => {
             const gid = String(node.id || '');
             const m = gid.match(/\/(\d+)$/);
             return m ? Number(m[1]) : node.id;
-          })(),
+          })(), // numeric id for refund flows
           name: node.name,
           created_at: node.createdAt,
           current_subtotal_price: node.currentSubtotalPriceSet?.presentmentMoney?.amount ?? null,
@@ -278,10 +280,86 @@ exports.getOrders = async (req, res) => {
 
       return res.status(200).json({
         orders,
+        // For name-search, we return GraphQL cursor in the same key you already use.
         nextPageInfo: pageInfoGql.hasNextPage ? pageInfoGql.endCursor : null,
       });
     }
 
+    // ---------- Branch B: Your existing REST paths (phone OR date range) ----------
+    let requestUrl;
+    if (phone) {
+      // Find customer by phone
+      const customerSearchUrl = `https://${tenant.shopDomain}.myshopify.com/admin/api/${tenant.apiVersion}/customers/search.json`;
+      const customerResponse = await axios.get(customerSearchUrl, {
+        params: { query: `phone:${phone}` },
+        headers: { "X-Shopify-Access-Token": tenant.accessToken },
+      });
+
+      if (!customerResponse.data.customers.length) {
+        return res.status(404).json({ error: "No customer found with this phone number." });
+      }
+      const customerId = customerResponse.data.customers[0].id;
+
+      const queryParams = new URLSearchParams({ limit, status: "any", customer_id: customerId });
+      if (page_info) queryParams.append("page_info", page_info);
+
+      requestUrl = `https://${tenant.shopDomain}.myshopify.com/admin/api/${tenant.apiVersion}/orders.json?${queryParams.toString()}`;
+    } else if (startDate && endDate) {
+      const queryParams = new URLSearchParams({
+        limit,
+        status: "any",
+        created_at_min: startDate,
+        created_at_max: endDate,
+      });
+      if (page_info) queryParams.append("page_info", page_info);
+
+      requestUrl = `https://${tenant.shopDomain}.myshopify.com/admin/api/${tenant.apiVersion}/orders.json?${queryParams.toString()}`;
+    } else {
+      return res.status(400).json({
+        error: "Please provide either a phone number, an orderName, or a date range.",
+      });
+    }
+
+    // REST fetch and mapping (unchanged)
+    const response = await axios.get(requestUrl, {
+      headers: { "X-Shopify-Access-Token": tenant.accessToken },
+    });
+
+    const pageInfo = parseLinkHeader(response.headers.link);
+
+    const filteredOrders = response.data.orders.map((order) => ({
+      id: order.id,
+      name: order.name,
+      created_at: order.created_at,
+      current_subtotal_price: order.current_total_price,
+      financial_status: order.financial_status,
+      fulfillment_status: order.fulfillment_status,
+      line_items: order.line_items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        quantity: item.quantity,
+        // Price after subtracting discount allocations for this line item
+        price: (() => {
+          const base = parseFloat(item.price) || 0;
+          const disc = Array.isArray(item.discount_allocations)
+            ? item.discount_allocations.reduce((sum, da) => sum + (parseFloat(da?.amount) || 0), 0)
+            : 0;
+          const net = Math.max(0, base - disc);
+          return net.toFixed(2);
+        })(),
+      })),
+      customer: order.customer
+        ? {
+            id: order.customer.id,
+            first_name: order.customer.first_name,
+            last_name: order.customer.last_name,
+            email: order.customer.email,
+            phone: order.customer.phone,
+          }
+        : null,
+    }));
+
+    return res.status(200).json({ orders: filteredOrders, nextPageInfo: pageInfo.next });
   } catch (err) {
     console.error("Error fetching orders:", err.message);
     return res.status(500).json({ error: "Internal Server Error" });
