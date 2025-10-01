@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Box, Grid, Card, CardHeader, CardContent, CardActions, Button, TextField, Typography, Alert, Snackbar, CircularProgress, Chip, Tooltip, Checkbox, InputAdornment, Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab } from '@mui/material';
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
+import HighlightOffIcon from '@mui/icons-material/HighlightOff';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import api from '../apiClient';
 
 interface OrderLineItem { id: number; name: string; quantity: number; price: string; }
@@ -35,6 +38,8 @@ export default function AgentDashboard() {
 	}>({ open: false, type: null, orderId: null, amountLabel: '', customerName: '' });
 	// Confirm action loading state
 	const [confirmLoading, setConfirmLoading] = useState(false);
+	// Result dialog state (blocks until Continue)
+	const [resultDlg, setResultDlg] = useState<{ open: boolean; status: 'success'|'failure'|'pending'; message: string } | null>(null);
 
 	const merged = useMemo(() => {
 		if (!orders) return [] as Array<{ order: OrderSummary; preview?: PreviewResult }>;
@@ -97,14 +102,14 @@ export default function AgentDashboard() {
 		try {
 			const res = await api.post('/refund', { phone, orderId });
 			if (res.status === 200) {
-				setSnack({ open: true, message: 'Refund executed successfully', severity: 'success' });
+				setResultDlg({ open: true, status: 'success', message: 'Refund executed successfully' });
 			} else if (res.status === 202) {
 				const pendingId = (res as any).data?.pendingId;
-				setSnack({ open: true, message: `Approval required. PendingId: ${pendingId}`, severity: 'info' });
+				setResultDlg({ open: true, status: 'pending', message: `Approval required. PendingId: ${pendingId}` });
 			}
 		} catch (err: any) {
 			const msg = err?.response?.data?.error || 'Refund failed';
-			setSnack({ open: true, message: msg, severity: 'error' });
+			setResultDlg({ open: true, status: 'failure', message: msg });
 		}
 	}
 
@@ -246,14 +251,14 @@ export default function AgentDashboard() {
 			}
 			const res = await api.post('/refund', payload);
 			if (res.status === 200) {
-				setSnack({ open: true, message: 'Partial refund executed successfully', severity: 'success' });
+				setResultDlg({ open: true, status: 'success', message: 'Partial refund executed successfully' });
 			} else if (res.status === 202) {
 				const pendingId = (res as any).data?.pendingId;
-				setSnack({ open: true, message: `Approval required. PendingId: ${pendingId}`, severity: 'info' });
+				setResultDlg({ open: true, status: 'pending', message: `Approval required. PendingId: ${pendingId}` });
 			}
 		} catch (err: any) {
 			const msg = err?.response?.data?.error || 'Partial refund failed';
-			setSnack({ open: true, message: msg, severity: 'error' });
+			setResultDlg({ open: true, status: 'failure', message: msg });
 		}
 	}
 
@@ -377,7 +382,7 @@ export default function AgentDashboard() {
 				</Card>
 			)}
 
-			{/* Snackbar */}
+			{/* Snackbar retained for minor pre-validation messages only */}
 			{snack && (
 				<Snackbar open={snack.open} autoHideDuration={4000} onClose={() => setSnack(null)} anchorOrigin={{ vertical: 'top', horizontal: 'center' }}>
 					<Alert severity={snack.severity} onClose={() => setSnack(null)} sx={{ width: '100%' }}>{snack.message}</Alert>
@@ -510,6 +515,28 @@ export default function AgentDashboard() {
 						</Button>
 					</>
 				)}
+			</DialogActions>
+		</Dialog>
+
+		{/* Result Dialog (blocking) */}
+		<Dialog open={!!resultDlg?.open} onClose={() => { /* block background dismiss */ }} maxWidth="xs" fullWidth>
+			<DialogTitle>
+				<Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+					{resultDlg?.status === 'success' && <CheckCircleOutlineIcon color="success" />}
+					{resultDlg?.status === 'failure' && <HighlightOffIcon color="error" />}
+					{resultDlg?.status === 'pending' && <InfoOutlinedIcon color="info" />}
+					<Typography variant="subtitle1">
+						{resultDlg?.status === 'success' ? 'Refund successful'
+							: resultDlg?.status === 'failure' ? 'Refund failed'
+							: 'Approval required'}
+					</Typography>
+				</Box>
+			</DialogTitle>
+			<DialogContent>
+				<Typography variant="body2">{resultDlg?.message}</Typography>
+			</DialogContent>
+			<DialogActions>
+				<Button variant="contained" onClick={() => setResultDlg(null)}>Continue</Button>
 			</DialogActions>
 		</Dialog>
 		</>
