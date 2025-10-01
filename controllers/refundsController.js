@@ -189,21 +189,41 @@ exports.getOrders = async (req, res) => {
         }
       `;
 
-      // Shopify order search query syntax supports things like: name:#1234
-      const variables = {
-        first: Math.min(Number(limit) || 10, 100),
-        after: page_info || null,
-        q: `name:${String(orderName)}`,
-      };
+      // Shopify order search syntax can be finicky with #; try quoted variants
+      const raw = String(orderName).trim();
+      const esc = raw.replace(/"/g, '\\"');
+      const candidates = [];
+      // prefer exact quoted
+      candidates.push(`name:"${esc}"`);
+      if (raw.startsWith('#')) {
+        candidates.push(`name:"${esc.replace(/^#/, '')}"`);
+        // unquoted fallbacks
+        candidates.push(`name:${esc}`);
+        candidates.push(`name:${esc.replace(/^#/, '')}`);
+      } else {
+        candidates.push(`name:"#${esc}"`);
+        // unquoted fallbacks
+        candidates.push(`name:${esc}`);
+        candidates.push(`name:#${esc}`);
+      }
 
-      const gqlResp = await axios.post(
-        gqlUrl,
-        { query, variables },
-        { headers: { "X-Shopify-Access-Token": tenant.accessToken } }
-      );
-
-      const edges = gqlResp.data?.data?.orders?.edges || [];
-      const pageInfoGql = gqlResp.data?.data?.orders?.pageInfo || { hasNextPage: false, endCursor: null };
+      let edges = [];
+      let pageInfoGql = { hasNextPage: false, endCursor: null };
+      for (const qstr of candidates) {
+        const variables = {
+          first: Math.min(Number(limit) || 10, 100),
+          after: page_info || null,
+          q: qstr,
+        };
+        const resp = await axios.post(
+          gqlUrl,
+          { query, variables },
+          { headers: { "X-Shopify-Access-Token": tenant.accessToken } }
+        );
+        edges = resp.data?.data?.orders?.edges || [];
+        pageInfoGql = resp.data?.data?.orders?.pageInfo || { hasNextPage: false, endCursor: null };
+        if (edges.length) break;
+      }
 
       const orders = edges.map(({ node }) => {
         // Map fulfillment status to your previous REST-ish shape
