@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:6001',
+        target: 'https://refunds-app.onrender.com',
         changeOrigin: true,
         secure: false,
       }

@@ -53,7 +53,21 @@ const userRouter = require('./routes/userRoutes');
 const webhookRoutes = require('./routes/webhook');
 const refundRulesRouter = require('./routes/refundRulesRoutes');
 
-app.use(cors())
+const allowedOrigins = [
+  "http://localhost:5173",        // React dev server
+  "https://your-frontend-domain.com" // deployed frontend
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true
+}));
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }));
 app.use('/api/v1', orderRouter);
