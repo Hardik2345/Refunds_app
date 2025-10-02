@@ -1,6 +1,6 @@
 {
   "openapi": "3.0.3",
-  "info": { "title": "Refunds API - Orders & Refunds", "version": "1.1.0", "description": "Orders listing and refund execution with approval flow. Line item prices in orders are net of discount_allocations. For auditing, see the Refund Stats API which records the last IP address (lastIp) and attempt history for executed refunds." },
+  "info": { "title": "Refunds API - Orders & Refunds", "version": "1.2.0", "description": "Orders listing and refund execution with approval flow. Supports listing by phone (REST) or order name (GraphQL). When listing by order name, GraphQL GIDs are mapped to numeric order and line item IDs so refund execution via REST works seamlessly. Line item prices in orders are net of discount_allocations. For auditing, see the Refund Stats API which records the last IP address (lastIp) and attempt history for executed refunds." },
   "servers": [{ "url": "http://localhost:6001" }],
   "tags": [ { "name": "Orders", "description": "Orders and refunds endpoints (tenant-scoped)" } ],
   "components": {
@@ -34,7 +34,7 @@
       "OrderSummary": { "type": "object", "properties": { "id": { "type": "integer" }, "name": { "type": "string" }, "created_at": { "type": "string", "format": "date-time" }, "current_subtotal_price": { "type": "string" }, "financial_status": { "type": "string" }, "fulfillment_status": { "type": "string" }, "line_items": { "type": "array", "items": { "$ref": "#/components/schemas/OrderLineItem" } }, "customer": { "type": "object", "nullable": true, "properties": { "id": { "type": "integer" }, "first_name": { "type": "string" }, "last_name": { "type": "string" }, "email": { "type": "string", "format": "email" }, "phone": { "type": "string" } } } } },
       "GetOrdersResponse": { "type": "object", "properties": { "orders": { "type": "array", "items": { "$ref": "#/components/schemas/OrderSummary" } }, "nextPageInfo": { "type": "string", "nullable": true } } },
       "PartialRefundLineItem": { "type": "object", "required": ["lineItemId", "quantity"], "properties": { "lineItemId": { "type": "integer" }, "quantity": { "type": "integer" }, "amount": { "type": "number", "description": "Amount to refund for this line" }, "restock_type": { "type": "string", "enum": ["return", "no_restock", "cancel"] }, "locationId": { "type": "integer", "nullable": true } } },
-      "RefundRequest": { "type": "object", "required": ["phone"], "properties": { "phone": { "type": "string" }, "orderId": { "type": "integer", "description": "Optional target order; defaults to most recent" }, "amount": { "type": "number", "description": "Optional amount (stored when approval is required)" }, "lineItems": { "type": "array", "items": { "$ref": "#/components/schemas/PartialRefundLineItem" }, "description": "If present, performs partial refund; otherwise attempts full refund with cancellation" } } },
+  "RefundRequest": { "type": "object", "properties": { "phone": { "type": "string", "description": "Provide either orderId or phone. If orderId is omitted, phone is required to resolve the latest order." }, "orderId": { "type": "integer", "description": "Target order id; if provided, phone is optional" }, "amount": { "type": "number", "description": "Optional amount (stored when approval is required)" }, "lineItems": { "type": "array", "items": { "$ref": "#/components/schemas/PartialRefundLineItem" }, "description": "If present, performs partial refund; otherwise attempts full refund with cancellation" } } },
       "RefundResponse": { "type": "object", "properties": { "refund": { "type": "object" } } },
       "PendingApprovalResponse": { "type": "object", "properties": { "message": { "type": "string", "example": "Approval required. Request recorded." }, "pendingId": { "type": "string" }, "ruleDecision": { "$ref": "#/components/schemas/RuleDecision" } } },
       "ApproveOrDenyResponse": { "type": "object", "properties": { "message": { "type": "string" }, "refund": { "type": "object" }, "pendingId": { "type": "string" } } }
@@ -94,9 +94,10 @@
       "get": {
         "security": [{ "bearerAuth": [] }],
         "tags": ["Orders"],
-        "summary": "List orders by phone or date range",
+        "summary": "List orders by phone, order name, or date range",
         "parameters": [
           { "name": "phone", "in": "query", "schema": { "type": "string" }, "description": "If set, finds customer by phone and lists recent orders" },
+          { "name": "orderName", "in": "query", "schema": { "type": "string" }, "description": "Shopify order name (e.g., #1234 or the exact display name). The API tries quoted and with/without # variants, and may fallback to order_number search." },
           { "name": "startDate", "in": "query", "schema": { "type": "string", "format": "date-time" } },
           { "name": "endDate", "in": "query", "schema": { "type": "string", "format": "date-time" } },
           { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 10 } },
@@ -104,7 +105,7 @@
         ],
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GetOrdersResponse" } } } },
-          "400": { "description": "Missing phone or date range", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "400": { "description": "Missing phone, orderName or date range", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "404": { "description": "No customer found (phone case)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
