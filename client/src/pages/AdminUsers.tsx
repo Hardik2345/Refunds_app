@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Box, Card, CardContent, CardHeader, TextField, MenuItem, Button, Alert, Stack, FormHelperText, FormControl, InputLabel, Select, Typography, Paper, Table, TableHead, TableRow, TableCell, TableBody, CircularProgress, Chip } from '@mui/material';
+import { Box, Card, CardContent, CardHeader, TextField, MenuItem, Button, Alert, Stack, FormHelperText, FormControl, InputLabel, Select, Typography, Paper, Table, TableHead, TableRow, TableCell, TableBody, CircularProgress, Chip, Grid } from '@mui/material';
 import api from '../apiClient';
 import { useAuth } from '../auth/AuthContext';
 
@@ -114,6 +114,7 @@ export default function AdminUsers() {
         setMsg({ type: 'success', text: `User ${name} created.` });
         setName(''); setEmail(''); setPhone(''); setStoreId(''); setPassword(''); setPasswordConfirm(''); setRole('refund_agent');
         loadUsers();
+        loadAudits();
       } else {
         setMsg({ type: 'error', text: 'Failed to create user.' });
       }
@@ -138,6 +139,7 @@ export default function AdminUsers() {
       if (res.status === 204) {
         setMsg({ type: 'success', text: `User ${display} deleted.` });
         loadUsers();
+        loadAudits();
       } else {
         setMsg({ type: 'error', text: 'Failed to delete user.' });
       }
@@ -152,8 +154,9 @@ export default function AdminUsers() {
     <Box>
       <Stack spacing={3}>
         <Typography variant="h6">Users</Typography>
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems="flex-start">
-          <Card sx={{ flex: 1, minWidth: 320 }}>
+        <Grid container spacing={3} alignItems="stretch">
+          <Grid item xs={12} md={6}>
+            <Card sx={{ height: '100%' }}>
             <CardHeader title="Create User" subheader="Platform Admin or Super Admin" />
             <CardContent>
               {msg && <Alert severity={msg.type} sx={{ mb: 2 }}>{msg.text}</Alert>}
@@ -214,9 +217,11 @@ export default function AdminUsers() {
                 </Stack>
               </Box>
             </CardContent>
-          </Card>
-          
-          <Paper sx={{ flex: 2, overflow: 'hidden', borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ height: '100%', overflow: 'hidden', borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
             <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider', backgroundColor: 'background.paper' }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>All Users</Typography>
               <Typography variant="caption" color="text.secondary">{loading ? 'Loading…' : `${users.length} total`}</Typography>
@@ -267,29 +272,59 @@ export default function AdminUsers() {
                 </TableBody>
               </Table>
             </Box>
-          </Paper>
-          <Card sx={{ flex: 1.2, minWidth: 320 }}>
-            <CardHeader title="Recent User Audit Logs" subheader={loadingAudits ? 'Loading…' : `${audits.length} recent`} />
-            <CardContent>
-              {!loadingAudits && audits.length === 0 && (
-                <Typography variant="body2" color="text.secondary">No audit entries yet.</Typography>
-              )}
-              <Stack spacing={1.25}>
-                {audits.map((a: any) => (
-                  <Box key={a._id} sx={{ display: 'grid', gap: 0.25 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
-                      <Chip size="small" label={a.action} color={a.action === 'USER_CREATED' ? 'success' : a.action === 'USER_DELETED' ? 'warning' : 'default'} variant="outlined" />
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{a.targetUser?.name || a.targetUser?.email || a.targetUser || 'User'}</Typography>
-                    </Box>
-                    <Typography variant="caption" color="text.secondary">
-                      by {a.actor?.name || a.actor?.email || a.actor} • {a.tenant?.name || a.tenant || '—'} • {new Date(a.createdAt).toLocaleString()}
-                    </Typography>
+            </Paper>
+          </Grid>
+
+          <Grid item xs={12}>
+            <Card>
+              <CardHeader title="Recent User Audit Logs" subheader={loadingAudits ? 'Loading…' : `${audits.length} recent`} />
+              <CardContent sx={{ p: 0 }}>
+                {loadingAudits && (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                    <CircularProgress size={24} />
                   </Box>
-                ))}
-              </Stack>
-            </CardContent>
-          </Card>
-        </Stack>
+                )}
+                {!loadingAudits && audits.length === 0 && (
+                  <Box sx={{ p: 2 }}>
+                    <Typography variant="body2" color="text.secondary">No audit entries yet.</Typography>
+                  </Box>
+                )}
+                {!loadingAudits && audits.length > 0 && (
+                  <Box>
+                    {audits.map((a: any, idx: number) => {
+                      const left = (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+                          <Chip size="small" label={a.action} color={a.action === 'USER_CREATED' ? 'success' : a.action === 'USER_DELETED' ? 'warning' : 'default'} variant="outlined" />
+                          <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {a.targetUser?.name || a.targetUser?.email || a.targetUser || 'User'}
+                          </Typography>
+                        </Box>
+                      );
+                      const right = (
+                        <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                          {new Date(a.createdAt).toLocaleString()}
+                        </Typography>
+                      );
+                      return (
+                        <Box key={a._id} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, px: 2, py: 1.25, borderTop: idx === 0 ? 'none' : '1px solid', borderColor: 'divider' }}>
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, minWidth: 0, flex: 1 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, minWidth: 0 }}>
+                              {left}
+                              {right}
+                            </Box>
+                            <Typography variant="caption" color="text.secondary" sx={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              by {a.actor?.name || a.actor?.email || a.actor} • {a.tenant?.name || a.tenant || '—'}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
       </Stack>
     </Box>
   );
