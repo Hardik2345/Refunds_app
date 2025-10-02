@@ -108,4 +108,23 @@ exports.getAllUsers = factory.getAll(User, { path: 'storeId', select: 'name' });
 
 //Do NOT attempt to change passwords by this
 exports.updateUser = factory.updateOne(User);
-exports.deleteUser = factory.deleteOne(User);
+exports.deleteUser = async (req, res, next) => {
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { active: false },
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      return next(new AppError('No user found with that ID', 404));
+    }
+
+    res.status(204).json({
+      status: 'success',
+      data: null
+    });
+  } catch (err) {
+    next(err);
+  }
+};
