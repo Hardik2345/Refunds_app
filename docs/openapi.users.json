@@ -211,6 +211,7 @@
         "security": [{ "bearerAuth": [] }],
         "tags": ["Users"],
         "summary": "Deactivate my account",
+        "description": "Soft-deactivates the current user. Side effect: creates a USER_DELETED audit record with meta.reason = 'self_delete'.",
         "responses": {
           "204": { "description": "Deactivated" },
           "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
@@ -238,7 +239,7 @@
         "security": [{ "bearerAuth": [] }],
         "tags": ["Users"],
         "summary": "Create user (admins)",
-        "description": "Only super_admin and platform_admin. storeId required unless role is platform_admin.",
+        "description": "Only super_admin and platform_admin. storeId required unless role is platform_admin. Side effect: creates a USER_CREATED audit record capturing actor, target user, tenant (if applicable), and a snapshot of name/email/role/phone.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateUserRequest" } } } },
         "responses": {
           "201": { "description": "Created", "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string" }, "data": { "type": "object", "properties": { "user": { "$ref": "#/components/schemas/UserPublic" } } } } } } } },
@@ -274,6 +275,7 @@
         "security": [{ "bearerAuth": [] }],
         "tags": ["Users"],
         "summary": "Delete user (admins)",
+        "description": "Soft-deactivates the user. Side effect: creates a USER_DELETED audit record with actor and targetUser.",
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
         "responses": {
           "204": { "description": "Deleted" },

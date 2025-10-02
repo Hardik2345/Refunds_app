@@ -124,6 +124,15 @@ try {
 } catch (e) {
   console.warn('Refund Stats Swagger docs not loaded:', e.message);
 }
+// Serve User Audit OpenAPI spec and Swagger UI
+try {
+  const uaSpecPath = path.join(__dirname, 'docs', 'openapi.user-audit.json');
+  const uaOpenapi = JSON.parse(fs.readFileSync(uaSpecPath, 'utf-8'));
+  app.get('/openapi.user-audit.json', (req, res) => res.json(uaOpenapi));
+  app.use('/api-docs/user-audit', swaggerUi.serveFiles(uaOpenapi, {}), swaggerUi.setup(uaOpenapi));
+} catch (e) {
+  console.warn('User Audit Swagger docs not loaded:', e.message);
+}
 app.use(globalErrorHandler);
 
 app.use((req, res, next) => {

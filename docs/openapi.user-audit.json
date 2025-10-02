@@ -1,0 +1,52 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Refunds API - User Audit Logs",
+    "version": "1.0.0",
+    "description": "Documentation of automatic audit logs written on user lifecycle actions (creation, deletion). These logs are internal records and are not exposed via API endpoints at this time."
+  },
+  "servers": [{ "url": "http://localhost:6001" }],
+  "tags": [
+    { "name": "UserAudit", "description": "Automatic logs for user creation and deletion" }
+  ],
+  "components": {
+    "schemas": {
+      "UserAudit": {
+        "type": "object",
+        "properties": {
+          "_id": { "type": "string" },
+          "action": {
+            "type": "string",
+            "enum": ["USER_CREATED", "USER_DELETED", "USER_RESTORED"],
+            "description": "Type of audit event"
+          },
+          "actor": { "type": "string", "description": "User ID who performed the action" },
+          "targetUser": { "type": "string", "description": "User ID of the affected user" },
+          "tenant": { "type": "string", "nullable": true, "description": "Tenant/Store context if applicable" },
+          "meta": {
+            "type": "object",
+            "description": "Snapshot of key user fields and optional reason",
+            "properties": {
+              "email": { "type": "string", "format": "email" },
+              "name": { "type": "string" },
+              "role": { "type": "string", "enum": ["super_admin", "refund_agent", "platform_admin"] },
+              "phone": { "type": "string" },
+              "reason": { "type": "string", "description": "Optional free-text reason (e.g., self_delete)" }
+            }
+          },
+          "ip": { "type": "string", "nullable": true },
+          "userAgent": { "type": "string", "nullable": true },
+          "requestId": { "type": "string", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  },
+  "paths": {},
+  "x-notes": [
+    "An audit record is written when an admin creates a user via POST /api/v1/users. The action is USER_CREATED, actor is the authenticated requester, targetUser is the newly created user, tenant is derived from the created user's storeId (if set), and meta includes a snapshot of name, email, role, and phone.",
+    "An audit record is written when a user deletes themself via DELETE /api/v1/users/deleteMe. The action is USER_DELETED with meta.reason = 'self_delete'.",
+    "An audit record is written when an admin deletes a user via DELETE /api/v1/users/{id}. The action is USER_DELETED."
+  ]
+}
