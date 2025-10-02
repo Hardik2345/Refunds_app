@@ -234,7 +234,7 @@ async function buildRefundContext(req, res, next) {
         customerKey,
         totalSpentCredits, // normalized (abs/100) for display
         totalSpentCreditsRaw, // raw units from Flits (e.g., paise)
-        totalCredits,
+        totalCredits: Math.abs(totalCredits)/100,
       },
       request: {
         lineItems: Array.isArray(lineItems) ? lineItems : []
