@@ -11,6 +11,7 @@ export default function AdminUsers() {
   const { user } = useAuth();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loadingTenants, setLoadingTenants] = useState<boolean>(false);
 
@@ -25,6 +26,7 @@ export default function AdminUsers() {
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const roleOfCurrent = String((user as any)?.role || '').toLowerCase();
   const canManage = user && (user as any).role && ['platform_admin', 'super_admin', 'user_admin'].includes(roleOfCurrent);
+  const currentUserId = (user as any)?._id || '';
 
   const loadUsers = async () => {
     try {
@@ -103,6 +105,30 @@ export default function AdminUsers() {
       setMsg({ type: 'error', text: e?.response?.data?.message || e?.response?.data?.error || 'Failed to create user' });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const onDeleteUser = async (id: string, display: string) => {
+    if (!canManage) {
+      setMsg({ type: 'error', text: 'You do not have permission to delete users.' });
+      return;
+    }
+    if (!id) return;
+    if (!window.confirm(`Delete user ${display}? This will deactivate their account.`)) return;
+    setDeletingId(id);
+    setMsg(null);
+    try {
+      const res = await api.delete(`/users/${id}`);
+      if (res.status === 204) {
+        setMsg({ type: 'success', text: `User ${display} deleted.` });
+        loadUsers();
+      } else {
+        setMsg({ type: 'error', text: 'Failed to delete user.' });
+      }
+    } catch (e: any) {
+      setMsg({ type: 'error', text: e?.response?.data?.message || e?.response?.data?.error || 'Failed to delete user' });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -187,20 +213,37 @@ export default function AdminUsers() {
                     <TableCell>Email</TableCell>
                     <TableCell>Role</TableCell>
                     <TableCell>Tenant</TableCell>
+                    <TableCell align="right">Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {users.map((u: any) => (
-                    <TableRow key={u.id || u._id} hover>
-                      <TableCell>{u.name}</TableCell>
-                      <TableCell>{u.email}</TableCell>
-                      <TableCell sx={{ textTransform: 'capitalize' }}>{String(u.role || '').replace('_', ' ')}</TableCell>
-                      <TableCell>{u.storeId?.name || '—'}</TableCell>
-                    </TableRow>
-                  ))}
+                  {users.map((u: any) => {
+                    const id = u.id || u._id;
+                    const isSelf = id === currentUserId;
+                    const display = u.name || u.email || id;
+                    return (
+                      <TableRow key={id} hover>
+                        <TableCell>{u.name}</TableCell>
+                        <TableCell>{u.email}</TableCell>
+                        <TableCell sx={{ textTransform: 'capitalize' }}>{String(u.role || '').replace('_', ' ')}</TableCell>
+                        <TableCell>{u.storeId?.name || '—'}</TableCell>
+                        <TableCell align="right">
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            disabled={!canManage || isSelf || deletingId === id}
+                            onClick={() => onDeleteUser(id, display)}
+                          >
+                            {deletingId === id ? 'Deleting…' : 'Delete'}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                   {!users.length && !loading && (
                     <TableRow>
-                      <TableCell colSpan={4} align="center">
+                      <TableCell colSpan={5} align="center">
                         <Typography variant="body2" color="text.secondary">No users found.</Typography>
                       </TableCell>
                     </TableRow>

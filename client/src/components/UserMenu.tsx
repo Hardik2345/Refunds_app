@@ -40,6 +40,26 @@ export default function UserMenu() {
     }
   };
 
+  const handleDeactivate = async () => {
+    if (!window.confirm('Deactivate your account? This will disable access until an admin reactivates it.')) return;
+    try {
+      const res = await api.delete('/users/deleteMe');
+      if (res.status === 204) {
+        // Treat similar to logout
+        setUser(null);
+        setSelectedTenantId(null);
+        setTenantHeader(null);
+        window.location.href = '/login';
+      }
+    } catch (e) {
+      // best-effort; if the token is invalid we may already be logged out
+      setUser(null);
+      setSelectedTenantId(null);
+      setTenantHeader(null);
+      window.location.href = '/login';
+    }
+  };
+
   if (loading) {
     return (
       <Button size="small" variant="text" disabled sx={{ opacity: 0.6 }}>Loading…</Button>
@@ -88,6 +108,8 @@ export default function UserMenu() {
         <Divider />
         <MenuItem onClick={() => setAnchorEl(null)}>Account</MenuItem>
         <MenuItem onClick={() => setAnchorEl(null)}>Settings</MenuItem>
+        <Divider />
+        <MenuItem onClick={handleDeactivate} sx={{ color: 'warning.main' }}>Deactivate account</MenuItem>
         <Divider />
         <MenuItem onClick={handleLogout} sx={{ color: 'error.main' }}>Logout</MenuItem>
       </Menu>
