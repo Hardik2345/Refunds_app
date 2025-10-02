@@ -2,6 +2,7 @@ const AppError = require('../utils/appError');
 const User = require('./../models/userModel');
 const catchAsync = require('./../utils/catchAsync');
 const factory = require('./handlerFactory');
+const { logUserAudit } = require('../utils/logUserAudit');
 
 const filterObj = (obj, ...allowedFields) => {
   const newObj = {};
@@ -48,7 +49,16 @@ exports.updateMe = catchAsync(async (req, res, next) => {
 });
 
 exports.deleteMe = catchAsync(async (req, res, next) => {
-  await User.findOneAndUpdate(req.user.id, { active: false });
+  const user =await User.findOneAndUpdate(req.user.id, { active: false });
+
+  logUserAudit({
+    action: 'USER_DELETED',
+    actorId: req.user._id,
+    targetUser: user,
+    tenantId: user.storeId || null,
+    req,
+    meta: { reason: 'self_delete' },
+  });
 
   req.status(204).json({
     status: 'success',
@@ -96,6 +106,14 @@ exports.createUser = catchAsync(async (req, res, next) => {
     passwordConfirm,
   });
 
+  logUserAudit({
+    action: 'USER_CREATED',
+    actorId: req.user._id,
+    targetUser: user,
+    tenantId: user.storeId || null,
+    req,
+  });
+
   user.password = undefined;
   res.status(201).json({
     status: 'success',
@@ -119,6 +137,14 @@ exports.deleteUser = async (req, res, next) => {
     if (!user) {
       return next(new AppError('No user found with that ID', 404));
     }
+
+    logUserAudit({
+      action: 'USER_DELETED',
+      actorId: req.user._id,
+      targetUser: user,
+      tenantId: user.storeId || null,
+      req,
+    });
 
     res.status(204).json({
       status: 'success',
