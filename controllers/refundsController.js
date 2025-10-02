@@ -156,7 +156,7 @@ exports.getOrders = async (req, res) => {
                 name
                 createdAt
                 currentSubtotalPriceSet { presentmentMoney { amount } }
-                financialStatus
+                displayFinancialStatus
                 displayFulfillmentStatus
                 customer { id firstName lastName email phone }
                 lineItems(first: 100) {
