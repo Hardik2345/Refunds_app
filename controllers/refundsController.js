@@ -146,151 +146,183 @@ exports.getOrders = async (req, res) => {
     if (orderName) {
       const gqlUrl = `https://${tenant.shopDomain}.myshopify.com/admin/api/${tenant.apiVersion}/graphql.json`;
 
-      // Build GraphQL query with cursor pagination
       const query = `
-    query OrdersByName($first: Int!, $after: String, $q: String!) {
-      orders(first: $first, after: $after, query: $q, sortKey: CREATED_AT, reverse: true) {
-        edges {
-          cursor
-          node {
-            id
-            name
-            createdAt
-            currentSubtotalPriceSet { presentmentMoney { amount } }
-            financialStatus
-            displayFulfillmentStatus
-            customer { id firstName lastName email phone }
-            lineItems(first: 100) {
-              edges {
-                node {
-                  id
-                  name
-                  quantity
-                  originalUnitPriceSet { presentmentMoney { amount } }
-                  discountAllocations {
-                    allocatedAmountSet { presentmentMoney { amount } }
+        query OrdersByName($first: Int!, $after: String, $q: String!) {
+          orders(first: $first, after: $after, query: $q, sortKey: CREATED_AT, reverse: true) {
+            edges {
+              cursor
+              node {
+                id
+                name
+                createdAt
+                currentSubtotalPriceSet { presentmentMoney { amount } }
+                financialStatus
+                displayFulfillmentStatus
+                customer { id firstName lastName email phone }
+                lineItems(first: 100) {
+                  edges {
+                    node {
+                      id
+                      name
+                      quantity
+                      originalUnitPriceSet { presentmentMoney { amount } }
+                      discountAllocations {
+                        allocatedAmountSet { presentmentMoney { amount } }
+                      }
+                    }
                   }
                 }
               }
             }
+            pageInfo { hasNextPage endCursor }
           }
         }
-        pageInfo { hasNextPage endCursor }
+      `;
+
+      // Build multiple candidate queries for robust matching
+      const raw = String(orderName).trim();
+      const esc = raw.replace(/"/g, '\\"');
+      const digits = raw.replace(/[^\d]/g, "");
+
+      const candidates = [];
+      if (raw.startsWith("#")) {
+        candidates.push(`name:"${esc}" status:any`);
+        candidates.push(`name:"${esc.replace(/^#/, "")}" status:any`);
+      } else {
+        candidates.push(`name:"#${esc}" status:any`);
+        candidates.push(`name:"${esc}" status:any`);
       }
-    }
-  `;
-
-  const raw = String(orderName).trim();
-  const esc = raw.replace(/"/g, '\\"');
-  const digits = raw.replace(/[^\d]/g, "");
-
-  // Build candidate queries — ALWAYS add `status:any`
-  const candidates = [];
-  if (raw.startsWith("#")) {
-    candidates.push(`name:"${esc}" status:any`);
-    candidates.push(`name:"${esc.replace(/^#/, "")}" status:any`);
-  } else {
-    candidates.push(`name:"#${esc}" status:any`);
-    candidates.push(`name:"${esc}" status:any`);
-  }
-  if (digits) {
-    candidates.push(`order_number:${digits} status:any`);
-  }
-
-  let edges = [];
-  let pageInfoGql = { hasNextPage: false, endCursor: null };
-  let lastErrors = null;
-
-  for (const qstr of candidates) {
-    const variables = {
-      first: Math.min(Number(limit) || 10, 100),
-      // IMPORTANT: for GraphQL pagination, `after` must be the previous GraphQL endCursor (not REST page_info)
-      after: page_info || null,
-      q: qstr,
-    };
-
-    const resp = await axios.post(
-      gqlUrl,
-      { query, variables },
-      {
-        headers: {
-          "X-Shopify-Access-Token": tenant.accessToken,
-          "Content-Type": "application/json",
-        },
+      if (digits) {
+        candidates.push(`order_number:${digits} status:any`);
       }
-    );
 
-    if (resp.data?.errors?.length) {
-      // surface query issues in logs to debug quickly
-      console.warn("[ordersByName GraphQL errors]", resp.data.errors);
-      lastErrors = resp.data.errors;
-    }
+      let edges = [];
+      let pageInfoGql = { hasNextPage: false, endCursor: null };
 
-    edges = resp.data?.data?.orders?.edges || [];
-    pageInfoGql = resp.data?.data?.orders?.pageInfo || { hasNextPage: false, endCursor: null };
-    if (edges.length) break; // stop on first candidate that returns results
-  }
+      // Track last error for better diagnostics if all candidates fail
+      let lastError = null;
+      let lastGqlErrors = null;
 
-  // Map results (same as you do today)
-  const orders = edges.map(({ node }) => {
-    const fulfillment_status = node.displayFulfillmentStatus
-      ? String(node.displayFulfillmentStatus).toLowerCase()
-      : null;
+      for (const qstr of candidates) {
+        try {
+          const variables = {
+            first: Math.min(Number(limit) || 10, 100),
+            // GraphQL pagination must use previous endCursor (not REST page_info)
+            after: page_info || null,
+            q: qstr,
+          };
 
-    const line_items = (node.lineItems?.edges || []).map(({ node: li }) => {
-      const base = parseFloat(li.originalUnitPriceSet?.presentmentMoney?.amount || "0");
-      const disc = Array.isArray(li.discountAllocations)
-        ? li.discountAllocations.reduce(
-            (sum, da) => sum + parseFloat(da?.allocatedAmountSet?.presentmentMoney?.amount || "0"),
-            0
-          )
-        : 0;
-      const net = Math.max(0, base - disc);
-      return {
-        id: (() => {
-          const gid = String(li.id || "");
-          const m = gid.match(/\/(\d+)$/);
-          return m ? Number(m[1]) : li.id;
-        })(),
-        name: li.name,
-        quantity: li.quantity,
-        price: net.toFixed(2),
-      };
-    });
+          const resp = await axios.post(
+            gqlUrl,
+            { query, variables },
+            {
+              headers: {
+                "X-Shopify-Access-Token": tenant.accessToken,
+                "Content-Type": "application/json",
+              },
+              // Optional: small timeout to avoid hanging on a bad candidate
+              timeout: 15000,
+            }
+          );
 
-    return {
-      id: (() => {
-        const gid = String(node.id || "");
-        const m = gid.match(/\/(\d+)$/);
-        return m ? Number(m[1]) : node.id;
-      })(),
-      name: node.name,
-      created_at: node.createdAt,
-      current_subtotal_price: node.currentSubtotalPriceSet?.presentmentMoney?.amount ?? null,
-      financial_status: node.financialStatus ? String(node.financialStatus).toLowerCase() : null,
-      fulfillment_status,
-      line_items,
-      customer: node.customer
-        ? {
-            id: node.customer.id,
-            first_name: node.customer.firstName,
-            last_name: node.customer.lastName,
-            email: node.customer.email,
-            phone: node.customer.phone,
+          if (resp.data?.errors?.length) {
+            lastGqlErrors = resp.data.errors;
+            // Continue to next candidate instead of failing hard
+            continue;
           }
-        : null,
-    };
-  });
 
-      
+          const data = resp.data?.data;
+          if (!data) {
+            // malformed response; try next candidate
+            lastError = new Error("Empty GraphQL data");
+            continue;
+          }
+
+          edges = data.orders?.edges || [];
+          pageInfoGql = data.orders?.pageInfo || { hasNextPage: false, endCursor: null };
+
+          if (edges.length) {
+            // We got results; stop trying further candidates
+            break;
+          }
+        } catch (err) {
+          // Network/timeout/Auth/etc — record and continue to next candidate
+          lastError = err;
+          // eslint-disable-next-line no-console
+          console.warn("[ordersByName GraphQL candidate failed]", qstr, err?.message || err);
+          continue;
+        }
+      }
+
+      // If nothing matched and we had errors, surface a helpful message
+      if (!edges.length && (lastError || lastGqlErrors)) {
+        return res.status(502).json({
+          error: "Failed to fetch orders by name",
+          details: {
+            message: lastError?.message || null,
+            graphqlErrors: lastGqlErrors || null,
+          },
+        });
+      }
+
+      // Map results to your REST-ish shape
+      const orders = edges.map(({ node }) => {
+        const fulfillment_status = node.displayFulfillmentStatus
+          ? String(node.displayFulfillmentStatus).toLowerCase()
+          : null;
+
+        const line_items = (node.lineItems?.edges || []).map(({ node: li }) => {
+          const base = parseFloat(li.originalUnitPriceSet?.presentmentMoney?.amount || "0");
+          const disc = Array.isArray(li.discountAllocations)
+            ? li.discountAllocations.reduce(
+                (sum, da) => sum + parseFloat(da?.allocatedAmountSet?.presentmentMoney?.amount || "0"),
+                0
+              )
+            : 0;
+          const net = Math.max(0, base - disc);
+          return {
+            id: (() => {
+              const gid = String(li.id || "");
+              const m = gid.match(/\/(\d+)$/);
+              return m ? Number(m[1]) : li.id;
+            })(),
+            name: li.name,
+            quantity: li.quantity,
+            price: net.toFixed(2),
+          };
+        });
+
+        return {
+          id: (() => {
+            const gid = String(node.id || "");
+            const m = gid.match(/\/(\d+)$/);
+            return m ? Number(m[1]) : node.id;
+          })(),
+          name: node.name,
+          created_at: node.createdAt,
+          current_subtotal_price: node.currentSubtotalPriceSet?.presentmentMoney?.amount ?? null,
+          financial_status: node.financialStatus ? String(node.financialStatus).toLowerCase() : null,
+          fulfillment_status,
+          line_items,
+          customer: node.customer
+            ? {
+                id: node.customer.id,
+                first_name: node.customer.firstName,
+                last_name: node.customer.lastName,
+                email: node.customer.email,
+                phone: node.customer.phone,
+              }
+            : null,
+        };
+      });
+
       return res.status(200).json({
         orders,
-        // For name-search, we return GraphQL cursor in the same key you already use.
         nextPageInfo: pageInfoGql.hasNextPage ? pageInfoGql.endCursor : null,
       });
     }
 
-    // ---------- Branch B: Your existing REST paths (phone OR date range) ----------
+    // ---------- Branch B: REST (phone OR date range) ----------
     let requestUrl;
     if (phone) {
       // Find customer by phone
@@ -325,7 +357,6 @@ exports.getOrders = async (req, res) => {
       });
     }
 
-    // REST fetch and mapping (unchanged)
     const response = await axios.get(requestUrl, {
       headers: { "X-Shopify-Access-Token": tenant.accessToken },
     });
@@ -343,7 +374,6 @@ exports.getOrders = async (req, res) => {
         id: item.id,
         name: item.name,
         quantity: item.quantity,
-        // Price after subtracting discount allocations for this line item
         price: (() => {
           const base = parseFloat(item.price) || 0;
           const disc = Array.isArray(item.discount_allocations)
@@ -366,6 +396,7 @@ exports.getOrders = async (req, res) => {
 
     return res.status(200).json({ orders: filteredOrders, nextPageInfo: pageInfo.next });
   } catch (err) {
+    // eslint-disable-next-line no-console
     console.error("Error fetching orders:", err.message);
     return res.status(500).json({ error: "Internal Server Error" });
   }
