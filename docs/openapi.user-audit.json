@@ -48,7 +48,9 @@
       "get": {
         "tags": ["UserAudit"],
         "summary": "List user audit logs (admins)",
+        "description": "Tenant-scoped results. platform_admin must provide x-tenant-id header. super_admin is restricted to their assigned tenant.",
         "parameters": [
+          { "name": "x-tenant-id", "in": "header", "schema": { "type": "string" }, "required": false, "description": "Required for platform_admin and user_admin; ignored for super_admin (bound to assigned tenant)." },
           { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
           { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 20 } },
           { "name": "sort", "in": "query", "schema": { "type": "string", "default": "-createdAt" } },

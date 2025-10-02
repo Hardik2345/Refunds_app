@@ -20,7 +20,13 @@ exports.listAudits = catchAsync(async (req, res, next) => {
   if (action) filter.action = action;
   if (actor) filter.actor = actor;
   if (targetUser) filter.targetUser = targetUser;
-  if (tenant) filter.tenant = tenant;
+  // Enforce tenant scoping from middleware
+  if (req.tenant?._id) {
+    filter.tenant = req.tenant._id;
+  } else if (tenant) {
+    // fallback if middleware didn't attach tenant for any reason
+    filter.tenant = tenant;
+  }
   if (from || to) {
     filter.createdAt = {};
     if (from) filter.createdAt.$gte = new Date(String(from));

@@ -91,7 +91,7 @@ export default function AdminUsers() {
       setMsg({ type: 'error', text: 'Name, email, password and confirmation are required.' });
       return;
     }
-    if (role !== 'platform_admin' && !storeId) {
+    if (role !== 'platform_admin' && roleOfCurrent !== 'super_admin' && !storeId) {
       setMsg({ type: 'error', text: 'Tenant is required for non-platform_admin users.' });
       return;
     }
