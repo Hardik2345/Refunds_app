@@ -456,8 +456,8 @@ exports.refundOrderByPhone = async (req, res) => {
     }
 
     // Optional: early bail if (accidentally) refunded
-    // const alreadyRefunded = await hasRefunds(tenant, targetOrder.id);
-    // if (alreadyRefunded) return res.status(400).json({ error: "This order has already been refunded." });
+    const alreadyRefunded = await hasRefunds(tenant, targetOrder.id);
+    if (alreadyRefunded) return res.status(400).json({ error: "This order has already been refunded." });
 
     // Need a successful parent transaction to refund
     const transactions = await getOrderTransactions(tenant, targetOrder.id);

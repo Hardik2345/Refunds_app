@@ -265,24 +265,24 @@ function evaluateRefundRules(context) {
   let reason = "Allowed by default";
 
   // 0) Cashback deny rule (uses context.meta.totalSpentCredits populated during context build)
-  // if (
-  //   outcome !== "DENY" &&
-  //   typeof meta?.totalSpentCreditsRaw === "number" &&
-  //   Number.isFinite(meta.totalSpentCreditsRaw)
-  // ) {
-  //   // If your Flits amounts are in paise (e.g., 39900), compare against that; otherwise adjust.
-  //   const threshold = (typeof rules.cashbackSpentThreshold === 'number' && Number.isFinite(rules.cashbackSpentThreshold))
-  //     ? rules.cashbackSpentThreshold
-  //     : 39900; // default used in your earlier check
-  //   limits.cashbackSpentThreshold = threshold;
-  //   limits.observedCashbackSpentCreditsRaw = meta.totalSpentCreditsRaw;
-  //   limits.observedCashbackSpentCredits = meta.totalSpentCredits; // normalized
-  //   if (Math.abs(meta.totalSpentCreditsRaw) >= threshold) {
-  //     matched.push("cashbackSpentThreshold");
-  //     outcome = "DENY";
-  //     reason = "Customer has already utilised cashback; refund not eligible";
-  //   }
-  // }
+  if (
+    outcome !== "DENY" &&
+    typeof meta?.totalSpentCreditsRaw === "number" &&
+    Number.isFinite(meta.totalSpentCreditsRaw)
+  ) {
+    // If your Flits amounts are in paise (e.g., 39900), compare against that; otherwise adjust.
+    const threshold = (typeof rules.cashbackSpentThreshold === 'number' && Number.isFinite(rules.cashbackSpentThreshold))
+      ? rules.cashbackSpentThreshold
+      : 39900; // default used in your earlier check
+    limits.cashbackSpentThreshold = threshold;
+    limits.observedCashbackSpentCreditsRaw = meta.totalSpentCreditsRaw;
+    limits.observedCashbackSpentCredits = meta.totalSpentCredits; // normalized
+    if (Math.abs(meta.totalSpentCreditsRaw) >= threshold) {
+      matched.push("cashbackSpentThreshold");
+      outcome = "DENY";
+      reason = "Customer has already utilised cashback; refund not eligible";
+    }
+  }
 
   // --- A) Lifetime refund count ---
   if (
