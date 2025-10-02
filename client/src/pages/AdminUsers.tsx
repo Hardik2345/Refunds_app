@@ -153,7 +153,12 @@ export default function AdminUsers() {
   return (
     <Box>
       <Stack spacing={3}>
-        <Typography variant="h6">Users</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>Users</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {loading ? 'Loading…' : `${users.length} total`}
+          </Typography>
+        </Box>
         <Grid container spacing={3} alignItems="stretch">
           <Grid item xs={12} md={6}>
             <Card sx={{ height: '100%' }}>
