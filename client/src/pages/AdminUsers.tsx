@@ -277,7 +277,7 @@ export default function AdminUsers() {
           <Grid item xs={12}>
             <Card>
               <CardHeader title="Recent User Audit Logs" subheader={loadingAudits ? 'Loading…' : `${audits.length} recent`} />
-              <CardContent sx={{ p: 0 }}>
+              <CardContent sx={{ p: 0, maxHeight: 360, overflowY: 'auto' }}>
                 {loadingAudits && (
                   <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
                     <CircularProgress size={24} />
