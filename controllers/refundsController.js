@@ -148,136 +148,141 @@ exports.getOrders = async (req, res) => {
 
       // Build GraphQL query with cursor pagination
       const query = `
-        query OrdersByName($first: Int!, $after: String, $q: String!) {
-          orders(first: $first, after: $after, query: $q, sortKey: CREATED_AT, reverse: true) {
-            edges {
-              cursor
-              node {
-                id
-                name
-                createdAt
-                currentSubtotalPriceSet { presentmentMoney { amount } }
-                financialStatus
-                displayFulfillmentStatus
-
-                customer {
+    query OrdersByName($first: Int!, $after: String, $q: String!) {
+      orders(first: $first, after: $after, query: $q, sortKey: CREATED_AT, reverse: true) {
+        edges {
+          cursor
+          node {
+            id
+            name
+            createdAt
+            currentSubtotalPriceSet { presentmentMoney { amount } }
+            financialStatus
+            displayFulfillmentStatus
+            customer { id firstName lastName email phone }
+            lineItems(first: 100) {
+              edges {
+                node {
                   id
-                  firstName
-                  lastName
-                  email
-                  phone
-                }
-
-                lineItems(first: 100) {
-                  edges {
-                    node {
-                      id
-                      name
-                      quantity
-                      originalUnitPriceSet { presentmentMoney { amount } }
-                      // Sum of discounts on this line
-                      discountAllocations {
-                        allocatedAmountSet { presentmentMoney { amount } }
-                      }
-                    }
+                  name
+                  quantity
+                  originalUnitPriceSet { presentmentMoney { amount } }
+                  discountAllocations {
+                    allocatedAmountSet { presentmentMoney { amount } }
                   }
                 }
               }
             }
-            pageInfo { hasNextPage endCursor }
           }
         }
-      `;
-
-      // Shopify order search syntax can be finicky with #; try quoted variants
-      const raw = String(orderName).trim();
-      const esc = raw.replace(/"/g, '\\"');
-      const candidates = [];
-      // prefer exact quoted
-      candidates.push(`name:"${esc}"`);
-      if (raw.startsWith('#')) {
-        candidates.push(`name:"${esc.replace(/^#/, '')}"`);
-        // unquoted fallbacks
-        candidates.push(`name:${esc}`);
-        candidates.push(`name:${esc.replace(/^#/, '')}`);
-      } else {
-        candidates.push(`name:"#${esc}"`);
-        // unquoted fallbacks
-        candidates.push(`name:${esc}`);
-        candidates.push(`name:#${esc}`);
+        pageInfo { hasNextPage endCursor }
       }
+    }
+  `;
 
-      let edges = [];
-      let pageInfoGql = { hasNextPage: false, endCursor: null };
-      for (const qstr of candidates) {
-        const variables = {
-          first: Math.min(Number(limit) || 10, 100),
-          after: page_info || null,
-          q: qstr,
-        };
-        const resp = await axios.post(
-          gqlUrl,
-          { query, variables },
-          { headers: { "X-Shopify-Access-Token": tenant.accessToken } }
-        );
-        edges = resp.data?.data?.orders?.edges || [];
-        pageInfoGql = resp.data?.data?.orders?.pageInfo || { hasNextPage: false, endCursor: null };
-        if (edges.length) break;
+  const raw = String(orderName).trim();
+  const esc = raw.replace(/"/g, '\\"');
+  const digits = raw.replace(/[^\d]/g, "");
+
+  // Build candidate queries — ALWAYS add `status:any`
+  const candidates = [];
+  if (raw.startsWith("#")) {
+    candidates.push(`name:"${esc}" status:any`);
+    candidates.push(`name:"${esc.replace(/^#/, "")}" status:any`);
+  } else {
+    candidates.push(`name:"#${esc}" status:any`);
+    candidates.push(`name:"${esc}" status:any`);
+  }
+  if (digits) {
+    candidates.push(`order_number:${digits} status:any`);
+  }
+
+  let edges = [];
+  let pageInfoGql = { hasNextPage: false, endCursor: null };
+  let lastErrors = null;
+
+  for (const qstr of candidates) {
+    const variables = {
+      first: Math.min(Number(limit) || 10, 100),
+      // IMPORTANT: for GraphQL pagination, `after` must be the previous GraphQL endCursor (not REST page_info)
+      after: page_info || null,
+      q: qstr,
+    };
+
+    const resp = await axios.post(
+      gqlUrl,
+      { query, variables },
+      {
+        headers: {
+          "X-Shopify-Access-Token": tenant.accessToken,
+          "Content-Type": "application/json",
+        },
       }
+    );
 
-      const orders = edges.map(({ node }) => {
-        // Map fulfillment status to your previous REST-ish shape
-        const fulfillment_status = node.displayFulfillmentStatus
-          ? String(node.displayFulfillmentStatus).toLowerCase()
-          : null;
+    if (resp.data?.errors?.length) {
+      // surface query issues in logs to debug quickly
+      console.warn("[ordersByName GraphQL errors]", resp.data.errors);
+      lastErrors = resp.data.errors;
+    }
 
-        const line_items = (node.lineItems?.edges || []).map(({ node: li }) => {
-          const base = parseFloat(li.originalUnitPriceSet?.presentmentMoney?.amount || "0");
-          const disc = Array.isArray(li.discountAllocations)
-            ? li.discountAllocations.reduce(
-                (sum, da) => sum + parseFloat(da?.allocatedAmountSet?.presentmentMoney?.amount || "0"),
-                0
-              )
-            : 0;
+    edges = resp.data?.data?.orders?.edges || [];
+    pageInfoGql = resp.data?.data?.orders?.pageInfo || { hasNextPage: false, endCursor: null };
+    if (edges.length) break; // stop on first candidate that returns results
+  }
 
-          // Keep parity with your REST mapping: price after discount allocations (per unit)
-          const net = Math.max(0, base - disc);
-          return {
-            id: (() => {
-              const gid = String(li.id || '');
-              const m = gid.match(/\/(\d+)$/);
-              return m ? Number(m[1]) : li.id;
-            })(),
-            name: li.name,
-            quantity: li.quantity,
-            price: net.toFixed(2),
-          };
-        });
+  // Map results (same as you do today)
+  const orders = edges.map(({ node }) => {
+    const fulfillment_status = node.displayFulfillmentStatus
+      ? String(node.displayFulfillmentStatus).toLowerCase()
+      : null;
 
-        return {
-          id: (() => {
-            const gid = String(node.id || '');
-            const m = gid.match(/\/(\d+)$/);
-            return m ? Number(m[1]) : node.id;
-          })(), // numeric id for refund flows
-          name: node.name,
-          created_at: node.createdAt,
-          current_subtotal_price: node.currentSubtotalPriceSet?.presentmentMoney?.amount ?? null,
-          financial_status: node.financialStatus ? String(node.financialStatus).toLowerCase() : null,
-          fulfillment_status,
-          line_items,
-          customer: node.customer
-            ? {
-                id: node.customer.id,
-                first_name: node.customer.firstName,
-                last_name: node.customer.lastName,
-                email: node.customer.email,
-                phone: node.customer.phone,
-              }
-            : null,
-        };
-      });
+    const line_items = (node.lineItems?.edges || []).map(({ node: li }) => {
+      const base = parseFloat(li.originalUnitPriceSet?.presentmentMoney?.amount || "0");
+      const disc = Array.isArray(li.discountAllocations)
+        ? li.discountAllocations.reduce(
+            (sum, da) => sum + parseFloat(da?.allocatedAmountSet?.presentmentMoney?.amount || "0"),
+            0
+          )
+        : 0;
+      const net = Math.max(0, base - disc);
+      return {
+        id: (() => {
+          const gid = String(li.id || "");
+          const m = gid.match(/\/(\d+)$/);
+          return m ? Number(m[1]) : li.id;
+        })(),
+        name: li.name,
+        quantity: li.quantity,
+        price: net.toFixed(2),
+      };
+    });
 
+    return {
+      id: (() => {
+        const gid = String(node.id || "");
+        const m = gid.match(/\/(\d+)$/);
+        return m ? Number(m[1]) : node.id;
+      })(),
+      name: node.name,
+      created_at: node.createdAt,
+      current_subtotal_price: node.currentSubtotalPriceSet?.presentmentMoney?.amount ?? null,
+      financial_status: node.financialStatus ? String(node.financialStatus).toLowerCase() : null,
+      fulfillment_status,
+      line_items,
+      customer: node.customer
+        ? {
+            id: node.customer.id,
+            first_name: node.customer.firstName,
+            last_name: node.customer.lastName,
+            email: node.customer.email,
+            phone: node.customer.phone,
+          }
+        : null,
+    };
+  });
+
+      
       return res.status(200).json({
         orders,
         // For name-search, we return GraphQL cursor in the same key you already use.
