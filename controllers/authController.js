@@ -24,15 +24,15 @@ function setAuthCookies(req, res, { accessToken, refreshToken }) {
   // NOTE: If FE & BE are on different domains, use sameSite:'none' + secure:true
   res.cookie('at', accessToken, {
     httpOnly: true,
-    secure: isSecure,
-    sameSite: 'lax',
+    secure: true,
+    sameSite: 'None',
     maxAge: 15 * 60 * 1000, // 15 minutes
   });
 
   res.cookie('rt', refreshToken, {
     httpOnly: true,
-    secure: isSecure,
-    sameSite: 'lax',
+    secure: true,
+    sameSite: 'None',
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
   });
 }
