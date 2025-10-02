@@ -52,6 +52,7 @@ const globalErrorHandler = require('./controllers/errorController');
 const userRouter = require('./routes/userRoutes');
 const webhookRoutes = require('./routes/webhook');
 const refundRulesRouter = require('./routes/refundRulesRoutes');
+const userAuditRouter = require('./routes/userAuditRoutes');
 
 const allowedOrigins = [
   "http://localhost:5173",        // React dev server
@@ -77,6 +78,7 @@ app.use('/api/v1/users', userRouter);
 app.use('/api/v1/tenants', tenantRouter);
 app.use('/api/v1/refund-rules', refundRulesRouter);
 app.use('/api/v1/refund-stats', refundStatRouter);
+app.use('/api/v1/user-audits', userAuditRouter);
 
 // Serve Users-only OpenAPI spec and Swagger UI
 try {

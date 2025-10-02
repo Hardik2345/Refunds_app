@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Box, Card, CardContent, CardHeader, TextField, MenuItem, Button, Alert, Stack, FormHelperText, FormControl, InputLabel, Select, Typography, Paper, Table, TableHead, TableRow, TableCell, TableBody, CircularProgress } from '@mui/material';
+import { Box, Card, CardContent, CardHeader, TextField, MenuItem, Button, Alert, Stack, FormHelperText, FormControl, InputLabel, Select, Typography, Paper, Table, TableHead, TableRow, TableCell, TableBody, CircularProgress, Chip } from '@mui/material';
 import api from '../apiClient';
 import { useAuth } from '../auth/AuthContext';
 
@@ -14,6 +14,8 @@ export default function AdminUsers() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loadingTenants, setLoadingTenants] = useState<boolean>(false);
+  const [audits, setAudits] = useState<any[]>([]);
+  const [loadingAudits, setLoadingAudits] = useState<boolean>(false);
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -53,10 +55,24 @@ export default function AdminUsers() {
     }
   };
 
+  const loadAudits = async () => {
+    if (!canManage) return;
+    try {
+      setLoadingAudits(true);
+      const res = await api.get('/user-audits', { params: { limit: 10, sort: '-createdAt' } });
+      setAudits(res.data?.data?.data || []);
+    } catch {
+      setAudits([]);
+    } finally {
+      setLoadingAudits(false);
+    }
+  };
+
   useEffect(() => {
     if (canManage) {
       loadUsers();
       loadTenants();
+      loadAudits();
     }
   }, [canManage]);
 
@@ -199,7 +215,7 @@ export default function AdminUsers() {
               </Box>
             </CardContent>
           </Card>
-
+          
           <Paper sx={{ flex: 2, overflow: 'hidden', borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
             <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider', backgroundColor: 'background.paper' }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>All Users</Typography>
@@ -252,6 +268,27 @@ export default function AdminUsers() {
               </Table>
             </Box>
           </Paper>
+          <Card sx={{ flex: 1.2, minWidth: 320 }}>
+            <CardHeader title="Recent User Audit Logs" subheader={loadingAudits ? 'Loading…' : `${audits.length} recent`} />
+            <CardContent>
+              {!loadingAudits && audits.length === 0 && (
+                <Typography variant="body2" color="text.secondary">No audit entries yet.</Typography>
+              )}
+              <Stack spacing={1.25}>
+                {audits.map((a: any) => (
+                  <Box key={a._id} sx={{ display: 'grid', gap: 0.25 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+                      <Chip size="small" label={a.action} color={a.action === 'USER_CREATED' ? 'success' : a.action === 'USER_DELETED' ? 'warning' : 'default'} variant="outlined" />
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{a.targetUser?.name || a.targetUser?.email || a.targetUser || 'User'}</Typography>
+                    </Box>
+                    <Typography variant="caption" color="text.secondary">
+                      by {a.actor?.name || a.actor?.email || a.actor} • {a.tenant?.name || a.tenant || '—'} • {new Date(a.createdAt).toLocaleString()}
+                    </Typography>
+                  </Box>
+                ))}
+              </Stack>
+            </CardContent>
+          </Card>
         </Stack>
       </Stack>
     </Box>

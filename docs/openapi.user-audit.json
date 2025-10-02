@@ -43,7 +43,51 @@
       }
     }
   },
-  "paths": {},
+  "paths": {
+    "/api/v1/user-audits": {
+      "get": {
+        "tags": ["UserAudit"],
+        "summary": "List user audit logs (admins)",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 20 } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "default": "-createdAt" } },
+          { "name": "action", "in": "query", "schema": { "type": "string", "enum": ["USER_CREATED", "USER_DELETED", "USER_RESTORED"] } },
+          { "name": "actor", "in": "query", "schema": { "type": "string" } },
+          { "name": "targetUser", "in": "query", "schema": { "type": "string" } },
+          { "name": "tenant", "in": "query", "schema": { "type": "string" } },
+          { "name": "from", "in": "query", "schema": { "type": "string", "format": "date-time" } },
+          { "name": "to", "in": "query", "schema": { "type": "string", "format": "date-time" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string" },
+                    "results": { "type": "integer" },
+                    "page": { "type": "integer" },
+                    "limit": { "type": "integer" },
+                    "total": { "type": "integer" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "data": { "type": "array", "items": { "$ref": "#/components/schemas/UserAudit" } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": { "description": "Forbidden" }
+        }
+      }
+    }
+  },
   "x-notes": [
     "An audit record is written when an admin creates a user via POST /api/v1/users. The action is USER_CREATED, actor is the authenticated requester, targetUser is the newly created user, tenant is derived from the created user's storeId (if set), and meta includes a snapshot of name, email, role, and phone.",
     "An audit record is written when a user deletes themself via DELETE /api/v1/users/deleteMe. The action is USER_DELETED with meta.reason = 'self_delete'.",
