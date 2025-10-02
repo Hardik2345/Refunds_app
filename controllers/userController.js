@@ -49,7 +49,7 @@ exports.updateMe = catchAsync(async (req, res, next) => {
 });
 
 exports.deleteMe = catchAsync(async (req, res, next) => {
-  const user =await User.findOneAndUpdate(req.user.id, { active: false });
+  const user = await User.findByIdAndUpdate(req.user.id, { isActive: false }, { new: true });
 
   logUserAudit({
     action: 'USER_DELETED',
@@ -60,7 +60,7 @@ exports.deleteMe = catchAsync(async (req, res, next) => {
     meta: { reason: 'self_delete' },
   });
 
-  req.status(204).json({
+  res.status(204).json({
     status: 'success',
     data: null,
   });
@@ -130,7 +130,7 @@ exports.deleteUser = async (req, res, next) => {
   try {
     const user = await User.findByIdAndUpdate(
       req.params.id,
-      { active: false },
+      { isActive: false },
       { new: true, runValidators: true }
     );
 

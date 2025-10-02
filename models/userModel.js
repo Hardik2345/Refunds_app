@@ -91,8 +91,8 @@ userSchema.pre('save', function (next) {
 });
 
 userSchema.pre(/^find/, function (next) {
-  //this points to the current query
-  this.find({ active: { $ne: false } });
+  // this points to the current query; exclude deactivated users
+  this.find({ isActive: { $ne: false } });
   next();
 });
 
