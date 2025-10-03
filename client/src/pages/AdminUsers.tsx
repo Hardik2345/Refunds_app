@@ -113,8 +113,9 @@ export default function AdminUsers() {
         }
       }
       const res = await api.post('/users', payload);
-      if (res.status === 201) {
-        setMsg({ type: 'success', text: `User ${name} created.` });
+      if (res.status === 201 || res.status === 200) {
+        const actionText = res.status === 200 ? 'restored' : 'created';
+        setMsg({ type: 'success', text: `User ${name} ${actionText}.` });
         setName(''); setEmail(''); setPhone(''); setStoreId(''); setPassword(''); setPasswordConfirm(''); setRole('refund_agent');
         loadUsers();
         loadAudits();
@@ -298,7 +299,20 @@ export default function AdminUsers() {
                     {audits.map((a: any, idx: number) => {
                       const left = (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-                          <Chip size="small" label={a.action} color={a.action === 'USER_CREATED' ? 'success' : a.action === 'USER_DELETED' ? 'warning' : 'default'} variant="outlined" />
+                          <Chip
+                            size="small"
+                            label={a.action}
+                            color={
+                              a.action === 'USER_CREATED'
+                                ? 'success'
+                                : a.action === 'USER_DELETED'
+                                  ? 'warning'
+                                  : a.action === 'USER_RESTORED'
+                                    ? 'info'
+                                    : 'default'
+                            }
+                            variant="outlined"
+                          />
                           <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {a.targetUser?.name || a.targetUser?.email || a.targetUser || 'User'}
                           </Typography>
