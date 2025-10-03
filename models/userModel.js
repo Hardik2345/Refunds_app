@@ -91,8 +91,12 @@ userSchema.pre('save', function (next) {
 });
 
 userSchema.pre(/^find/, function (next) {
-  // this points to the current query; exclude deactivated users
-  this.find({ isActive: { $ne: false } });
+  // Exclude deactivated users by default, but allow overriding via query option `{ includeInactive: true }`
+  const opts = typeof this.getOptions === 'function' ? this.getOptions() : {};
+  const includeInactive = opts && Object.prototype.hasOwnProperty.call(opts, 'includeInactive') ? opts.includeInactive : false;
+  if (!includeInactive) {
+    this.find({ isActive: { $ne: false } });
+  }
   next();
 });
 

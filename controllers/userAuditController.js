@@ -40,8 +40,8 @@ exports.listAudits = catchAsync(async (req, res, next) => {
     .sort(String(sort))
     .skip((p - 1) * l)
     .limit(l)
-    .populate({ path: 'actor', select: 'name email role' })
-    .populate({ path: 'targetUser', select: 'name email role' })
+    .populate({ path: 'actor', select: 'name email role', options: { includeInactive: true } })
+    .populate({ path: 'targetUser', select: 'name email role', options: { includeInactive: true } })
     .populate({ path: 'tenant', select: 'name' });
 
   const [items, total] = await Promise.all([
