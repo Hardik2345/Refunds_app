@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Box, Card, CardContent, CardHeader, TextField, MenuItem, Button, Alert, Stack, FormHelperText, FormControl, InputLabel, Select, Typography, Paper, Table, TableHead, TableRow, TableCell, TableBody, CircularProgress, Chip, Grid } from '@mui/material';
+import { Box, Card, CardContent, CardHeader, TextField, MenuItem, Button, Alert, Stack, FormHelperText, FormControl, InputLabel, Select, Typography, Paper, Table, TableHead, TableRow, TableCell, TableBody, CircularProgress, Chip, Grid, Pagination } from '@mui/material';
 import api from '../apiClient';
 import { useAuth } from '../auth/AuthContext';
 
@@ -16,6 +16,9 @@ export default function AdminUsers() {
   const [loadingTenants, setLoadingTenants] = useState<boolean>(false);
   const [audits, setAudits] = useState<any[]>([]);
   const [loadingAudits, setLoadingAudits] = useState<boolean>(false);
+  const [auditPage, setAuditPage] = useState<number>(1);
+  const [auditLimit] = useState<number>(10);
+  const [auditTotal, setAuditTotal] = useState<number>(0);
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -56,14 +59,19 @@ export default function AdminUsers() {
     }
   };
 
-  const loadAudits = async () => {
+  const loadAudits = async (page?: number) => {
     if (!canManage) return;
     try {
       setLoadingAudits(true);
-      const res = await api.get('/user-audits', { params: { limit: 10, sort: '-createdAt' } });
+      const p = page ?? auditPage;
+      const res = await api.get('/user-audits', { params: { page: p, limit: auditLimit, sort: '-createdAt' } });
       setAudits(res.data?.data?.data || []);
+      const total = Number(res.data?.total ?? 0);
+      setAuditTotal(Number.isFinite(total) ? total : 0);
+      setAuditPage(Number(res.data?.page ?? p) || 1);
     } catch {
       setAudits([]);
+      setAuditTotal(0);
     } finally {
       setLoadingAudits(false);
     }
@@ -75,7 +83,8 @@ export default function AdminUsers() {
       if (!isSuperAdmin) {
         loadTenants();
       }
-      loadAudits();
+      setAuditPage(1);
+      loadAudits(1);
     }
   }, [canManage, isSuperAdmin]);
 
@@ -282,7 +291,16 @@ export default function AdminUsers() {
 
           <Grid item xs={12}>
             <Card>
-              <CardHeader title="Recent User Audit Logs" subheader={loadingAudits ? 'Loading…' : `${audits.length} recent`} />
+              <CardHeader
+                title="Recent User Audit Logs"
+                subheader={
+                  loadingAudits
+                    ? 'Loading…'
+                    : auditTotal > 0
+                      ? `Page ${auditPage} of ${Math.max(1, Math.ceil(auditTotal / auditLimit))} • ${auditTotal} total`
+                      : 'No entries'
+                }
+              />
               <CardContent sx={{ p: 0, maxHeight: 360, overflowY: 'auto' }}>
                 {loadingAudits && (
                   <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
@@ -337,6 +355,18 @@ export default function AdminUsers() {
                         </Box>
                       );
                     })}
+                    {/* Pagination controls */}
+                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+                      <Pagination
+                        size="small"
+                        page={auditPage}
+                        count={Math.max(1, Math.ceil(auditTotal / auditLimit) || 1)}
+                        onChange={(_, pageNum) => {
+                          setAuditPage(pageNum);
+                          loadAudits(pageNum);
+                        }}
+                      />
+                    </Box>
                   </Box>
                 )}
               </CardContent>
