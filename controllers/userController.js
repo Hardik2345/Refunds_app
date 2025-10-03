@@ -3,6 +3,7 @@ const User = require('./../models/userModel');
 const catchAsync = require('./../utils/catchAsync');
 const factory = require('./handlerFactory');
 const { logUserAudit } = require('../utils/logUserAudit');
+const APIFeatures = require('../utils/apiFeatures');
 
 const filterObj = (obj, ...allowedFields) => {
   const newObj = {};
@@ -122,7 +123,35 @@ exports.createUser = catchAsync(async (req, res, next) => {
 });
 
 exports.getUser = factory.getOne(User);
-exports.getAllUsers = factory.getAll(User, { path: 'storeId', select: 'name' });
+
+// List users with role-based scoping:
+// - super_admin: scoped to their assigned tenant (storeId)
+// - platform_admin, user_admin: unscoped (can see all)
+exports.getAllUsers = catchAsync(async (req, res, next) => {
+  let filter = {};
+  const role = req.user?.role;
+  if (role === 'super_admin') {
+    const tenantId = req.user?.storeId || req.user?.tenantId || null;
+    if (!tenantId) {
+      return next(new AppError('Your account is not assigned to a tenant', 403));
+    }
+    filter = { storeId: tenantId };
+  }
+
+  let baseQuery = User.find(filter).populate({ path: 'storeId', select: 'name' });
+  const features = new APIFeatures(baseQuery, req.query)
+    .filter()
+    .sort()
+    .limitFields()
+    .pagination();
+  const doc = await features.query;
+
+  res.status(200).json({
+    status: 'success',
+    results: doc.length,
+    data: { data: doc },
+  });
+});
 
 //Do NOT attempt to change passwords by this
 exports.updateUser = factory.updateOne(User);

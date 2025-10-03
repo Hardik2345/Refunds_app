@@ -28,6 +28,7 @@ export default function AdminUsers() {
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const roleOfCurrent = String((user as any)?.role || '').toLowerCase();
   const canManage = user && (user as any).role && ['platform_admin', 'super_admin', 'user_admin'].includes(roleOfCurrent);
+  const isSuperAdmin = roleOfCurrent === 'super_admin';
   const currentUserId = (user as any)?._id || '';
 
   const loadUsers = async () => {
@@ -71,10 +72,12 @@ export default function AdminUsers() {
   useEffect(() => {
     if (canManage) {
       loadUsers();
-      loadTenants();
+      if (!isSuperAdmin) {
+        loadTenants();
+      }
       loadAudits();
     }
-  }, [canManage]);
+  }, [canManage, isSuperAdmin]);
 
   useEffect(() => {
     if (role === 'platform_admin') setStoreId('');
@@ -223,7 +226,9 @@ export default function AdminUsers() {
             <Paper sx={{ height: '100%', overflow: 'hidden', borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
             <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider', backgroundColor: 'background.paper' }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>All Users</Typography>
-              <Typography variant="caption" color="text.secondary">{loading ? 'Loading…' : `${users.length} total`}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {loading ? 'Loading…' : `${users.length} total${isSuperAdmin ? ' (scoped to your tenant)' : ''}`}
+              </Typography>
             </Box>
             <Box sx={{ maxHeight: 480, overflow: 'auto' }}>
               <Table size="small" stickyHeader>

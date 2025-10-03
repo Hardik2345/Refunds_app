@@ -224,6 +224,7 @@
         "security": [{ "bearerAuth": [] }],
         "tags": ["Users"],
         "summary": "List users (admins)",
+        "description": "Role-based scoping: super_admin sees only users assigned to their tenant (storeId). platform_admin and user_admin can see all users.",
         "parameters": [
           { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
           { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 100 } },
