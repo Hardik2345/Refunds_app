@@ -41,6 +41,8 @@ export default function AgentDashboard() {
 	const [confirmLoading, setConfirmLoading] = useState(false);
 	// Result dialog state (blocks until Continue)
 	const [resultDlg, setResultDlg] = useState<{ open: boolean; status: 'success'|'failure'|'pending'; message: string } | null>(null);
+	// Track the last successfully refunded order to apply an optimistic UI update on Continue
+	const [lastRefundedOrderId, setLastRefundedOrderId] = useState<number | null>(null);
 
 	const merged = useMemo(() => {
 		if (!orders) return [] as Array<{ order: OrderSummary; preview?: PreviewResult }>;
@@ -107,6 +109,7 @@ export default function AgentDashboard() {
 			const res = await api.post('/refund', payload);
 			if (res.status === 200) {
 				setResultDlg({ open: true, status: 'success', message: 'Refund executed successfully' });
+				setLastRefundedOrderId(orderId);
 			} else if (res.status === 202) {
 				const pendingId = (res as any).data?.pendingId;
 				setResultDlg({ open: true, status: 'pending', message: `Approval required. PendingId: ${pendingId}` });
@@ -257,6 +260,7 @@ export default function AgentDashboard() {
 			const res = await api.post('/refund', payload);
 			if (res.status === 200) {
 				setResultDlg({ open: true, status: 'success', message: 'Partial refund executed successfully' });
+				setLastRefundedOrderId(orderId);
 			} else if (res.status === 202) {
 				const pendingId = (res as any).data?.pendingId;
 				setResultDlg({ open: true, status: 'pending', message: `Approval required. PendingId: ${pendingId}` });
@@ -265,6 +269,27 @@ export default function AgentDashboard() {
 			const msg = err?.response?.data?.error || 'Partial refund failed';
 			setResultDlg({ open: true, status: 'failure', message: msg });
 		}
+	}
+
+	function applyOptimisticRefundUpdate(orderId: number) {
+		setPreview(prev => {
+			const key = String(orderId);
+			const existing = prev[key];
+			const updatedDecision: RuleDecision = {
+				outcome: 'DENY',
+				reason: 'Refund executed',
+				matched: existing?.decision?.matched,
+				rulesVersion: existing?.decision?.rulesVersion,
+				ruleSetId: existing?.decision?.ruleSetId,
+			};
+			const updated: PreviewResult = existing
+				? { ...existing, decision: updatedDecision, requiresApproval: false }
+				: { orderId, decision: updatedDecision, requiresApproval: false, ctxHints: null } as PreviewResult;
+			return { ...prev, [key]: updated };
+		});
+		// Clear any selection state for this order in case of partial flow
+		setSelections(prev => ({ ...prev, [orderId]: {} }));
+		setSelectionPreview(prev => ({ ...prev, [orderId]: {} as any }));
 	}
 
 	return (
@@ -558,7 +583,18 @@ export default function AgentDashboard() {
 				<Typography variant="body2">{resultDlg?.message}</Typography>
 			</DialogContent>
 			<DialogActions>
-				<Button variant="contained" onClick={() => setResultDlg(null)}>Continue</Button>
+				<Button
+					variant="contained"
+					onClick={() => {
+						if (resultDlg?.status === 'success' && lastRefundedOrderId != null) {
+							applyOptimisticRefundUpdate(lastRefundedOrderId);
+							setLastRefundedOrderId(null);
+						}
+						setResultDlg(null);
+					}}
+				>
+					Continue
+				</Button>
 			</DialogActions>
 		</Dialog>
 		</>

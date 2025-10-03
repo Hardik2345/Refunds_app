@@ -1,6 +1,7 @@
 const express = require('express');
 const userController = require('./../controllers/userController');
 const authController = require('./../controllers/authController');
+const User = require('./../models/userModel');
 
 const router = express.Router();
 
@@ -42,10 +43,26 @@ router
   .get(authController.restrictTo('super_admin','platform_admin','user_admin'), userController.getAllUsers)
   .post(authController.protect, authController.restrictTo('super_admin','platform_admin','user_admin'), forbidSuperAdminCreatingPlatformAdmin, userController.createUser);
 
+// Middleware to forbid non-platform_admin from deleting platform_admin users
+async function forbidDeletingPlatformAdmin(req, res, next) {
+  try {
+    const targetId = req.params?.id;
+    if (!targetId) return next();
+    const target = await User.findById(targetId).select('role');
+    const requesterRole = req.user?.role;
+    if (target && target.role === 'platform_admin' && requesterRole !== 'platform_admin') {
+      return res.status(403).json({ error: 'Only platform_admin can delete platform_admin users' });
+    }
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+}
+
 router
   .route('/:id')
   .get(authController.restrictTo('super_admin','platform_admin','user_admin'), userController.getUser)
   .patch(authController.restrictTo('super_admin','platform_admin','user_admin'), userController.updateUser)
-  .delete(authController.restrictTo('super_admin','platform_admin','user_admin'), userController.deleteUser);
+  .delete(authController.restrictTo('super_admin','platform_admin','user_admin'), forbidDeletingPlatformAdmin, userController.deleteUser);
 
 module.exports = router;
