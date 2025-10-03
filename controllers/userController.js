@@ -67,6 +67,12 @@ exports.deleteMe = catchAsync(async (req, res, next) => {
   });
 });
 
+// controllers/userController.js
+const AppError = require('../utils/appError');
+const User = require('./../models/userModel');
+const catchAsync = require('./../utils/catchAsync');
+const { logUserAudit } = require('../utils/logUserAudit');
+
 exports.createUser = catchAsync(async (req, res, next) => {
   const { name, email, phone, storeId, role, password, passwordConfirm } = req.body || {};
 
@@ -76,9 +82,10 @@ exports.createUser = catchAsync(async (req, res, next) => {
 
   const targetRole = role || 'refund_agent';
 
-  // Super admin restrictions: cannot create platform_admin and is tenant-bound
+  // --- Super admin restrictions: cannot create platform_admin and is tenant-bound
   const requesterRole = req.user?.role;
   const requesterTenantId = req.user?.storeId || req.user?.tenantId || null;
+
   if (requesterRole === 'super_admin') {
     if (targetRole === 'platform_admin') {
       return next(new AppError('super_admin cannot create platform_admin users', 403));
@@ -88,8 +95,8 @@ exports.createUser = catchAsync(async (req, res, next) => {
     }
   }
 
+  // For non-platform_admin users, ensure tenant (storeId) is set correctly
   if (targetRole !== 'platform_admin') {
-    // Require tenant when creating non-platform_admin
     const tenantForUser = requesterRole === 'super_admin' ? requesterTenantId : storeId;
     if (!tenantForUser) {
       return next(new AppError('storeId is required for non-platform_admin users', 400));
@@ -97,6 +104,55 @@ exports.createUser = catchAsync(async (req, res, next) => {
     req.body.storeId = tenantForUser; // force tenant for super_admin
   }
 
+  // ---------- RESURRECT (undelete) if a soft-deleted user with same email exists ----------
+  // We only allow resurrect if there is exactly one user with this email and isActive:false
+  // If an active user exists, we block to preserve uniqueness.
+  const existing = await User.findOne({ email }).select('+isActive +password');
+
+  if (existing && existing.isActive) {
+    // isActive user already exists with this email
+    return next(new AppError('Email already in use', 400));
+  }
+
+  if (existing && existing.isActive === false) {
+    // "Undelete" the user: reactivate and refresh credentials/fields
+    existing.name = name ?? existing.name;
+    existing.phone = phone ?? existing.phone;
+    existing.role = targetRole ?? existing.role;
+
+    // only set storeId for non-platform_admin; keep undefined for platform_admin
+    if (targetRole === 'platform_admin') {
+      existing.storeId = undefined;
+    } else {
+      existing.storeId = req.body.storeId || existing.storeId;
+    }
+
+    existing.isActive = true;
+    existing.password = password;
+    existing.passwordConfirm = passwordConfirm;
+
+    // Save triggers validators & hashing middleware
+    const resurrected = await existing.save();
+
+    // (Optional, but recommended): revoke any old refresh tokens/sessions for this user here.
+
+    await logUserAudit({
+      action: 'USER_RESTORED',
+      actorId: req.user._id,
+      targetUser: resurrected,
+      tenantId: resurrected.storeId || null,
+      req,
+      meta: { reason: 'soft_deleted_account_reactivated' }
+    });
+
+    resurrected.password = undefined;
+    return res.status(200).json({
+      status: 'success',
+      data: { user: resurrected },
+    });
+  }
+
+  // ---------- No existing user — create new ----------
   const user = await User.create({
     name,
     email,
@@ -107,7 +163,7 @@ exports.createUser = catchAsync(async (req, res, next) => {
     passwordConfirm,
   });
 
-  logUserAudit({
+  await logUserAudit({
     action: 'USER_CREATED',
     actorId: req.user._id,
     targetUser: user,
@@ -116,7 +172,7 @@ exports.createUser = catchAsync(async (req, res, next) => {
   });
 
   user.password = undefined;
-  res.status(201).json({
+  return res.status(201).json({
     status: 'success',
     data: { user },
   });
