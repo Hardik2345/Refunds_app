@@ -54,5 +54,9 @@ exports.setDateFilters = (req, res, next) => {
 };
 
 // CRUD/Read-only handlers leveraging the generic factory
-exports.getAllRefundStats = handlerFactory.getAll(RefundStat);
+// Include inactive users when populating `user` so deleted users still show names in stats
+exports.getAllRefundStats = handlerFactory.getAll(RefundStat, [
+  { path: 'user', select: 'name email role', options: { includeInactive: true } },
+  { path: 'tenant', select: 'name' },
+]);
 exports.getRefundStat = handlerFactory.getOne(RefundStat);

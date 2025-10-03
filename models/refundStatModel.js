@@ -72,13 +72,6 @@ RefundStatSchema.index({ tenant: 1, customer: 1 }, { unique: true });
 RefundStatSchema.index({ tenant: 1, nextRetryAt: 1 });
 RefundStatSchema.index({ tenant: 1, failureCount: -1 });
 
-// Helpful populates: user and tenant (name)
-RefundStatSchema.pre(/^find/, function(next) {
-  this.populate({ path: "user", select: "name email role" });
-  this.populate({ path: "tenant", select: "name" });
-  next();
-});
-
 /**
  * Compute exponential backoff (no jitter).
  * attempt = 1 -> base
