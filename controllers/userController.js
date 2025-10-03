@@ -67,12 +67,6 @@ exports.deleteMe = catchAsync(async (req, res, next) => {
   });
 });
 
-// controllers/userController.js
-const AppError = require('../utils/appError');
-const User = require('./../models/userModel');
-const catchAsync = require('./../utils/catchAsync');
-const { logUserAudit } = require('../utils/logUserAudit');
-
 exports.createUser = catchAsync(async (req, res, next) => {
   const { name, email, phone, storeId, role, password, passwordConfirm } = req.body || {};
 
