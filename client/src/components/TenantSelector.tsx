@@ -46,7 +46,8 @@ export default function TenantSelector() {
 
   const handleChange = (evt: SelectChangeEvent<string>) => {
     const id = evt.target.value || '';
-    setSelectedTenantId(id || null);
+    // Allow a special value 'ALL' to represent all tenants for admin views (e.g., audits)
+    setSelectedTenantId(id ? id : null);
   };
 
   return (
@@ -60,9 +61,12 @@ export default function TenantSelector() {
           onChange={handleChange}
           renderValue={(value) => {
             const t = tenants?.find(x => x._id === value);
+            if (value === 'ALL') return 'All tenants';
             return t ? `${t.name}` : 'Select tenant';
           }}
         >
+          {/* All tenants option for admin roles */}
+          <MenuItem value="ALL">All tenants</MenuItem>
           {loading && <MenuItem value=""><CircularProgress size={16} sx={{ mr: 1 }} /> Loading…</MenuItem>}
           {!loading && (tenants || []).map(t => (
             <MenuItem key={t._id} value={t._id}>

@@ -33,6 +33,10 @@ module.exports = async function tenantMiddleware(req, res, next) {
       if (!headerTenantId) {
         return res.status(400).json({ error: "Tenant ID missing" });
       }
+      if (String(headerTenantId).toUpperCase() === 'ALL') {
+        // Explicitly request all tenants scope: do not attach req.tenant
+        return next();
+      }
       const tenant = await Tenant.findById(headerTenantId);
       if (!tenant) return res.status(404).json({ error: "Tenant not found" });
       req.tenant = tenant;

@@ -20,11 +20,13 @@ exports.listAudits = catchAsync(async (req, res, next) => {
   if (action) filter.action = action;
   if (actor) filter.actor = actor;
   if (targetUser) filter.targetUser = targetUser;
-  // Enforce tenant scoping from middleware
+  // Tenant scoping:
+  // - If middleware attached a tenant, enforce it
+  // - Else, if explicit tenant param provided, use it
+  // - Else, no tenant filter (ALL tenants)
   if (req.tenant?._id) {
     filter.tenant = req.tenant._id;
   } else if (tenant) {
-    // fallback if middleware didn't attach tenant for any reason
     filter.tenant = tenant;
   }
   if (from || to) {
