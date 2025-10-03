@@ -102,6 +102,7 @@ exports.createUser = catchAsync(async (req, res, next) => {
   // We only allow resurrect if there is exactly one user with this email and isActive:false
   // If an active user exists, we block to preserve uniqueness.
   const existing = await User.findOne({ email }).select('+isActive +password');
+  console.log('Existing user check:', existing);
 
   if (existing && existing.isActive) {
     // isActive user already exists with this email
@@ -113,6 +114,8 @@ exports.createUser = catchAsync(async (req, res, next) => {
     existing.name = name ?? existing.name;
     existing.phone = phone ?? existing.phone;
     existing.role = targetRole ?? existing.role;
+
+    console.log('Resurrecting user:', existing);
 
     // only set storeId for non-platform_admin; keep undefined for platform_admin
     if (targetRole === 'platform_admin') {
@@ -127,6 +130,7 @@ exports.createUser = catchAsync(async (req, res, next) => {
 
     // Save triggers validators & hashing middleware
     const resurrected = await existing.save();
+    console.log('User Saved:', resurrected);
 
     // (Optional, but recommended): revoke any old refresh tokens/sessions for this user here.
 
