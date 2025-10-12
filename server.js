@@ -57,7 +57,8 @@ const userAuditRouter = require('./routes/userAuditRoutes');
 const allowedOrigins = [
   "http://localhost:5173",        // React dev server
   "https://refunds-app.vercel.app",
-  "https://vercel.com/raghav-kumars-projects-e04ee19e/refunds-app/HHyxuJsYERDcP89jaGPZbsEtxRVR"
+  "https://vercel.com/raghav-kumars-projects-e04ee19e/refunds-app/HHyxuJsYERDcP89jaGPZbsEtxRVR",
+  "https://refunds-app.trytechit.co"
 ];
 
 app.use(cors({
