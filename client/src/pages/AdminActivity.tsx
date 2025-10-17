@@ -267,7 +267,7 @@ export default function AdminActivity() {
                         }}
                       >
                         <CardHeader
-                          title={s.user?.name || s.user?.email || 'Unknown user'}
+                          title={`Last refunded by: ${s.user?.name || s.user?.email || 'Unknown user'}`}
                           subheader={
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
                               <Typography variant="caption" color="text.secondary">Tenant:</Typography>
