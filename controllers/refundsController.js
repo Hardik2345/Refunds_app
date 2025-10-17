@@ -576,20 +576,22 @@ exports.refundOrderByPhone = async (req, res) => {
       }
 
       if (customerKey && canIncrement) {
+        const amountNum = Number(Array.isArray(lineItems) && lineItems.length
+          ? lineItems.reduce((s,i)=>s+Number(i.amount||0),0)
+          : targetOrder.total_price);
         await RefundStat.updateOne(
-          { tenant: req.tenant._id, customer: customerKey, user: req.user._id },
+          { tenant: req.tenant._id, customer: customerKey },
           {
             $inc: { totalCount: 1, successCount: 1 },
             $set: {
+              user: req.user._id, // last actor for convenience
               lastRefundAt: new Date(),
               lastIp: req.ip || null,
               lastOutcome: "SUCCESS",
               lastErrorCode: null,
               lastErrorMsg: null,
               lastOrderId: String(targetOrder.id),
-              lastAmount: Number(Array.isArray(lineItems) && lineItems.length
-                ? lineItems.reduce((s,i)=>s+Number(i.amount||0),0)
-                : targetOrder.total_price),
+              lastAmount: amountNum,
               lastPartial: Array.isArray(lineItems) && lineItems.length > 0,
               lastRuleSetId: res.locals?.ruleDecision?.ruleSetId || req.ruleContext?.ruleSetId || null,
               lastRulesVer: res.locals?.ruleDecision?.rulesVersion || req.ruleContext?.rulesVersion || null,
@@ -608,10 +610,9 @@ exports.refundOrderByPhone = async (req, res) => {
                   errorMsg: null,
                   attemptNo: 1,
                   backoffMs: 0,
+                  actor: req.user._id,
                   orderId: String(targetOrder.id),
-                  amount: Number(Array.isArray(lineItems) && lineItems.length
-                    ? lineItems.reduce((s,i)=>s+Number(i.amount||0),0)
-                    : targetOrder.total_price),
+                  amount: amountNum,
                   partial: Array.isArray(lineItems) && lineItems.length > 0,
                   ruleSetId: res.locals?.ruleDecision?.ruleSetId || req.ruleContext?.ruleSetId || null,
                   rulesVer: res.locals?.ruleDecision?.rulesVersion || req.ruleContext?.rulesVersion || null,
@@ -781,8 +782,30 @@ exports.approvePendingRefund = async (req, res) => {
       }
       if (customerKey) {
         await RefundStat.updateOne(
-          { tenant: req.tenant._id, customer: customerKey, user: req.user._id },
-          { $inc: { totalCount: 1 }, $set: { lastRefundAt: new Date(), lastIp: req.ip || null } },
+          { tenant: req.tenant._id, customer: customerKey },
+          {
+            $inc: { totalCount: 1 },
+            $set: { user: req.user._id, lastRefundAt: new Date(), lastIp: req.ip || null },
+            $push: {
+              attempts: {
+                $each: [{
+                  at: new Date(),
+                  action: 'approve',
+                  outcome: 'SUCCESS',
+                  httpCode: 200,
+                  errorCode: null,
+                  errorMsg: null,
+                  attemptNo: 1,
+                  backoffMs: 0,
+                  actor: req.user._id,
+                  orderId: String(targetOrder.id),
+                  amount: Array.isArray(lineItems) && lineItems.length > 0 ? lineItems.reduce((sum, i) => sum + Number(i.amount || 0), 0) : Number(targetOrder.total_price || 0),
+                  partial: Array.isArray(lineItems) && lineItems.length > 0,
+                }],
+                $slice: -25
+              }
+            }
+          },
           { upsert: true }
         );
       }

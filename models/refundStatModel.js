@@ -15,6 +15,8 @@ const AttemptSchema = new Schema({
   errorMsg:   { type: String, default: null },      // truncated (keep to <= 500 chars)
   attemptNo:  { type: Number, default: 1 },         // retry number for this action
   backoffMs:  { type: Number, default: 0 },         // chosen backoff for *next* attempt
+  // Actor who performed this attempt
+  actor:      { type: Types.ObjectId, ref: "User", default: null },
   // Context thumbnails for forensics (tiny!)
   orderId:    { type: String, default: null },
   amount:     { type: Number, default: null },
@@ -71,6 +73,8 @@ RefundStatSchema.index({ tenant: 1, customer: 1 }, { unique: true });
 // Fast queries to find due retries and hot failure accounts
 RefundStatSchema.index({ tenant: 1, nextRetryAt: 1 });
 RefundStatSchema.index({ tenant: 1, failureCount: -1 });
+// For filtering logs by user accurately (matches any attempt actor)
+RefundStatSchema.index({ tenant: 1, 'attempts.actor': 1, lastRefundAt: -1 });
 
 /**
  * Compute exponential backoff (no jitter).
