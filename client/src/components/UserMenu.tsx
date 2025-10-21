@@ -106,9 +106,7 @@ export default function UserMenu() {
           </div>
         </MenuItem>
         <Divider />
-        <MenuItem onClick={() => setAnchorEl(null)}>Account</MenuItem>
-        <MenuItem onClick={() => setAnchorEl(null)}>Settings</MenuItem>
-        <Divider />
+  {/* Removed Account and Settings entries per requirements */}
         <MenuItem onClick={handleDeactivate} sx={{ color: 'warning.main' }}>Deactivate account</MenuItem>
         <Divider />
         <MenuItem onClick={handleLogout} sx={{ color: 'error.main' }}>Logout</MenuItem>

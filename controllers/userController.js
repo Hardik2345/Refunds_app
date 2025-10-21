@@ -188,7 +188,15 @@ exports.getAllUsers = catchAsync(async (req, res, next) => {
     filter = { storeId: tenantId };
   }
 
-  let baseQuery = User.find(filter).populate({ path: 'storeId', select: 'name' });
+  // Respect includeInactive=true to fetch soft-deleted users as well
+  const includeInactive = String(req.query?.includeInactive || '').toLowerCase() === 'true';
+  // Prevent APIFeatures.filter from treating includeInactive as a filter field
+  if (req.query && Object.prototype.hasOwnProperty.call(req.query, 'includeInactive')) {
+    delete req.query.includeInactive;
+  }
+
+  let baseQuery = User.find(filter, null, includeInactive ? { includeInactive: true } : {})
+    .populate({ path: 'storeId', select: 'name' });
   const features = new APIFeatures(baseQuery, req.query)
     .filter()
     .sort()
@@ -203,8 +211,51 @@ exports.getAllUsers = catchAsync(async (req, res, next) => {
   });
 });
 
-//Do NOT attempt to change passwords by this
-exports.updateUser = factory.updateOne(User);
+// Custom update to allow reactivating soft-deleted users and log audit entries
+exports.updateUser = catchAsync(async (req, res, next) => {
+  const id = req.params.id;
+  // Fetch including inactive so we can reactivate
+  const existing = await User.findById(id, null, { includeInactive: true });
+  if (!existing) {
+    return next(new AppError('No user found with that ID', 404));
+  }
+
+  const wasActive = existing.isActive !== false; // treat undefined as active
+
+  // Only allow certain fields to be updated via this endpoint
+  const allowed = ['name', 'email', 'phone', 'role', 'storeId', 'isActive'];
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+      existing[key] = req.body[key];
+    }
+  }
+
+  // Prevent password updates here
+  if (req.body.password || req.body.passwordConfirm) {
+    return next(new AppError('Use the appropriate password update route', 400));
+  }
+
+  const updated = await existing.save();
+
+  // If transitioned from inactive -> active, log USER_RESTORED
+  const isNowActive = updated.isActive !== false;
+  if (!wasActive && isNowActive) {
+    await logUserAudit({
+      action: 'USER_RESTORED',
+      actorId: req.user._id,
+      targetUser: updated,
+      tenantId: updated.storeId || null,
+      req,
+      meta: { reason: 'reactivated_by_admin' }
+    });
+  }
+
+  updated.password = undefined;
+  res.status(200).json({
+    status: 'success',
+    data: { data: updated },
+  });
+});
 exports.deleteUser = async (req, res, next) => {
   try {
     const user = await User.findByIdAndUpdate(

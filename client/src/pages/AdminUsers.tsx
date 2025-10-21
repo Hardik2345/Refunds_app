@@ -37,7 +37,7 @@ export default function AdminUsers() {
   const loadUsers = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/users', { params: { fields: 'name,email,role,storeId' } });
+      const res = await api.get('/users', { params: { fields: 'name,email,role,storeId,isActive', includeInactive: true } });
       const data = res.data?.data?.data || [];
       setUsers(data);
     } catch {
@@ -256,22 +256,56 @@ export default function AdminUsers() {
                     const id = u.id || u._id;
                     const isSelf = id === currentUserId;
                     const display = u.name || u.email || id;
+                    const inactive = u.isActive === false;
                     return (
-                      <TableRow key={id} hover>
-                        <TableCell>{u.name}</TableCell>
+                      <TableRow key={id} hover selected={inactive}>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            {inactive && <Chip size="small" label="Inactive" color="default" variant="outlined" />}
+                            <span>{u.name}</span>
+                          </Box>
+                        </TableCell>
                         <TableCell>{u.email}</TableCell>
                         <TableCell sx={{ textTransform: 'capitalize' }}>{String(u.role || '').replace('_', ' ')}</TableCell>
                         <TableCell>{u.storeId?.name || '—'}</TableCell>
                         <TableCell align="right">
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            color="error"
-                            disabled={!canManage || isSelf || deletingId === id}
-                            onClick={() => onDeleteUser(id, display)}
-                          >
-                            {deletingId === id ? 'Deleting…' : 'Delete'}
-                          </Button>
+                          {!inactive && (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="error"
+                              disabled={!canManage || isSelf || deletingId === id}
+                              onClick={() => onDeleteUser(id, display)}
+                              sx={{ ml: 1 }}
+                            >
+                              {deletingId === id ? 'Deleting…' : 'Delete'}
+                            </Button>
+                          )}
+                          {inactive && (
+                            <Button
+                              size="small"
+                              variant="contained"
+                              color="primary"
+                              disabled={!canManage}
+                              onClick={async () => {
+                                try {
+                                  setMsg(null);
+                                  const resp = await api.patch(`/users/${id}`, { isActive: true });
+                                  if (resp.status === 200) {
+                                    setMsg({ type: 'success', text: `User ${display} reactivated.` });
+                                    loadUsers();
+                                    loadAudits();
+                                  } else {
+                                    setMsg({ type: 'error', text: 'Failed to reactivate user.' });
+                                  }
+                                } catch (e: any) {
+                                  setMsg({ type: 'error', text: e?.response?.data?.message || e?.response?.data?.error || 'Failed to reactivate user' });
+                                }
+                              }}
+                            >
+                              Reactivate
+                            </Button>
+                          )}
                         </TableCell>
                       </TableRow>
                     );
