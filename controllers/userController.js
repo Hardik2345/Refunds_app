@@ -180,6 +180,7 @@ exports.getUser = factory.getOne(User);
 exports.getAllUsers = catchAsync(async (req, res, next) => {
   const role = req.user?.role;
   let match = {};
+  const status = String(req.query?.status || '').toLowerCase(); // 'active' | 'inactive' | ''
   if (role === 'super_admin') {
     const tenantId = req.user?.storeId || req.user?.tenantId || null;
     if (!tenantId) {
@@ -192,6 +193,11 @@ exports.getAllUsers = catchAsync(async (req, res, next) => {
 
   const pipeline = [];
   if (Object.keys(match).length) pipeline.push({ $match: match });
+  if (status === 'inactive') {
+    pipeline.push({ $match: { isActive: false } });
+  } else if (status === 'active') {
+    pipeline.push({ $match: { $or: [ { isActive: { $exists: false } }, { isActive: { $ne: false } } ] } });
+  }
   // Sort newest first by createdAt if present, else by _id
   pipeline.push({ $sort: { createdAt: -1, _id: -1 } });
   pipeline.push(
@@ -260,6 +266,30 @@ exports.updateUser = catchAsync(async (req, res, next) => {
 });
 exports.deleteUser = async (req, res, next) => {
   try {
+    const permanent = String(req.query?.permanent || '').toLowerCase() === 'true';
+    const requesterRole = req.user?.role;
+
+    if (permanent) {
+      if (requesterRole !== 'platform_admin') {
+        return next(new AppError('Only platform_admin can permanently delete users', 403));
+      }
+      const target = await User.findById(req.params.id, null, { includeInactive: true }).select('isActive role storeId');
+      if (!target) return next(new AppError('No user found with that ID', 404));
+      if (target.isActive !== false) {
+        return next(new AppError('User must be inactive before permanent deletion', 400));
+      }
+      await User.findByIdAndDelete(req.params.id);
+      await logUserAudit({
+        action: 'USER_DELETED',
+        actorId: req.user._id,
+        targetUser: target,
+        tenantId: target.storeId || null,
+        req,
+        meta: { reason: 'permanent_delete' }
+      });
+      return res.status(204).json({ status: 'success', data: null });
+    }
+
     const user = await User.findByIdAndUpdate(
       req.params.id,
       { isActive: false },

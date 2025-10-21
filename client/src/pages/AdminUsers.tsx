@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Box, Card, CardContent, CardHeader, TextField, MenuItem, Button, Alert, Stack, FormHelperText, FormControl, InputLabel, Select, Typography, Paper, Table, TableHead, TableRow, TableCell, TableBody, CircularProgress, Chip, Grid, Pagination } from '@mui/material';
+import { Box, Card, CardContent, CardHeader, TextField, MenuItem, Button, Alert, Stack, FormHelperText, FormControl, InputLabel, Select, Typography, Paper, Table, TableHead, TableRow, TableCell, TableBody, CircularProgress, Chip, Grid, Pagination, Tabs, Tab } from '@mui/material';
 import api from '../apiClient';
 import { useAuth } from '../auth/AuthContext';
 
@@ -33,11 +33,12 @@ export default function AdminUsers() {
   const canManage = user && (user as any).role && ['platform_admin', 'super_admin', 'user_admin'].includes(roleOfCurrent);
   const isSuperAdmin = roleOfCurrent === 'super_admin';
   const currentUserId = (user as any)?._id || '';
+  const [tab, setTab] = useState<'active' | 'inactive'>('active');
 
   const loadUsers = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/users', { params: { fields: 'name,email,role,storeId,isActive', includeInactive: true } });
+      const res = await api.get('/users', { params: { fields: 'name,email,role,storeId,isActive', status: tab } });
       const data = res.data?.data?.data || [];
       setUsers(data);
     } catch {
@@ -86,7 +87,7 @@ export default function AdminUsers() {
       setAuditPage(1);
       loadAudits(1);
     }
-  }, [canManage, isSuperAdmin]);
+  }, [canManage, isSuperAdmin, tab]);
 
   useEffect(() => {
     if (role === 'platform_admin') setStoreId('');
@@ -237,10 +238,16 @@ export default function AdminUsers() {
             <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider', backgroundColor: 'background.paper' }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>All Users</Typography>
               <Typography variant="caption" color="text.secondary">
-                {loading ? 'Loading…' : `${users.length} total${isSuperAdmin ? ' (scoped to your tenant)' : ''}`}
+                {loading ? 'Loading…' : `${users.length} ${tab} ${users.length === 1 ? 'user' : 'users'}${isSuperAdmin ? ' (scoped to your tenant)' : ''}`}
               </Typography>
             </Box>
-            <Box sx={{ maxHeight: 480, overflow: 'auto' }}>
+            <Box sx={{ px: 2, pt: 1 }}>
+              <Tabs value={tab} onChange={(_, v) => setTab(v)} aria-label="user status tabs" variant="fullWidth">
+                <Tab label="Active" value="active" />
+                <Tab label="Inactive" value="inactive" />
+              </Tabs>
+            </Box>
+            <Box sx={{ maxHeight: 440, overflow: 'auto' }}>
               <Table size="small" stickyHeader>
                 <TableHead>
                   <TableRow>
@@ -269,7 +276,7 @@ export default function AdminUsers() {
                         <TableCell sx={{ textTransform: 'capitalize' }}>{String(u.role || '').replace('_', ' ')}</TableCell>
                         <TableCell>{u.storeId?.name || '—'}</TableCell>
                         <TableCell align="right">
-                          {!inactive && (
+                          {tab === 'active' && (
                             <Button
                               size="small"
                               variant="outlined"
@@ -281,7 +288,8 @@ export default function AdminUsers() {
                               {deletingId === id ? 'Deleting…' : 'Delete'}
                             </Button>
                           )}
-                          {inactive && (
+                          {tab === 'inactive' && (
+                            <Stack direction="row" spacing={1} justifyContent="flex-end">
                             <Button
                               size="small"
                               variant="contained"
@@ -305,6 +313,31 @@ export default function AdminUsers() {
                             >
                               Reactivate
                             </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="error"
+                              disabled={!canManage}
+                              onClick={async () => {
+                                if (!window.confirm(`Permanently delete ${display}? This cannot be undone.`)) return;
+                                try {
+                                  setMsg(null);
+                                  const resp = await api.delete(`/users/${id}`, { params: { permanent: true } });
+                                  if (resp.status === 204) {
+                                    setMsg({ type: 'success', text: `User ${display} permanently deleted.` });
+                                    loadUsers();
+                                    loadAudits();
+                                  } else {
+                                    setMsg({ type: 'error', text: 'Failed to permanently delete user.' });
+                                  }
+                                } catch (e: any) {
+                                  setMsg({ type: 'error', text: e?.response?.data?.message || e?.response?.data?.error || 'Failed to permanently delete user' });
+                                }
+                              }}
+                            >
+                              Permanent Delete
+                            </Button>
+                            </Stack>
                           )}
                         </TableCell>
                       </TableRow>
