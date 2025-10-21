@@ -178,41 +178,39 @@ exports.getUser = factory.getOne(User);
 // - super_admin: scoped to their assigned tenant (storeId)
 // - platform_admin, user_admin: unscoped (can see all)
 exports.getAllUsers = catchAsync(async (req, res, next) => {
-  let filter = {};
   const role = req.user?.role;
+  let match = {};
   if (role === 'super_admin') {
     const tenantId = req.user?.storeId || req.user?.tenantId || null;
     if (!tenantId) {
       return next(new AppError('Your account is not assigned to a tenant', 403));
     }
-    filter = { storeId: tenantId };
+    match = { storeId: User.db.cast(User.collection.name, 'storeId', tenantId) };
   }
 
-  // Respect includeInactive=true to fetch soft-deleted users as well
-  const includeInactive = String(req.query?.includeInactive || '').toLowerCase() === 'true';
-  // Prevent APIFeatures.filter from treating includeInactive as a filter field
-  if (req.query && Object.prototype.hasOwnProperty.call(req.query, 'includeInactive')) {
-    delete req.query.includeInactive;
-  }
+  const limit = Math.max(1, Math.min(2000, parseInt(req.query?.limit) || 1000));
 
-  let baseQuery = User.find(filter, null, includeInactive ? { includeInactive: true } : {})
-    .populate({ path: 'storeId', select: 'name' });
-  const features = new APIFeatures(baseQuery, req.query)
-    .filter()
-    .sort()
-    .limitFields()
-    .pagination();
-  // Re-assert includeInactive option in case chaining replaced query options
-  if (includeInactive && typeof features.query?.setOptions === 'function') {
-    features.query.setOptions({ includeInactive: true });
-  }
-  const doc = await features.query;
+  const pipeline = [];
+  if (Object.keys(match).length) pipeline.push({ $match: match });
+  // Sort newest first by createdAt if present, else by _id
+  pipeline.push({ $sort: { createdAt: -1, _id: -1 } });
+  pipeline.push(
+    { $lookup: { from: 'tenants', localField: 'storeId', foreignField: '_id', as: 'store' } },
+    { $unwind: { path: '$store', preserveNullAndEmptyArrays: true } },
+    { $project: {
+        name: 1,
+        email: 1,
+        role: 1,
+        isActive: 1,
+        createdAt: 1,
+        storeId: { _id: '$store._id', name: '$store.name' },
+      }
+    },
+    { $limit: limit }
+  );
 
-  res.status(200).json({
-    status: 'success',
-    results: doc.length,
-    data: { data: doc },
-  });
+  const doc = await User.aggregate(pipeline);
+  res.status(200).json({ status: 'success', results: doc.length, data: { data: doc } });
 });
 
 // Custom update to allow reactivating soft-deleted users and log audit entries
