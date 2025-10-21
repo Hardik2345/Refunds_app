@@ -80,6 +80,8 @@ export default function AdminUsers() {
   };
 
   useEffect(() => {
+    // Super admin must not see inactive users; force tab to active
+    if (isSuperAdmin && tab !== 'active') setTab('active');
     if (canManage) {
       loadUsers();
       if (!isSuperAdmin) {
@@ -245,7 +247,7 @@ export default function AdminUsers() {
             <Box sx={{ px: 2, pt: 1 }}>
               <Tabs value={tab} onChange={(_, v) => setTab(v)} aria-label="user status tabs" variant="fullWidth">
                 <Tab label="Active" value="active" />
-                <Tab label="Inactive" value="inactive" />
+                {!isSuperAdmin && <Tab label="Inactive" value="inactive" />}
               </Tabs>
             </Box>
             <Box sx={{ maxHeight: 440, overflow: 'auto' }}>
@@ -289,7 +291,7 @@ export default function AdminUsers() {
                               {deletingId === id ? 'Deleting…' : 'Delete'}
                             </Button>
                           )}
-                          {tab === 'inactive' && (
+                          {!isSuperAdmin && tab === 'inactive' && (
                             <Stack direction="row" spacing={1} justifyContent="flex-end">
                               <Button
                                 size="small"
