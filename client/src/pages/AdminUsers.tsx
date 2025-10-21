@@ -12,6 +12,7 @@ export default function AdminUsers() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [rowBusyId, setRowBusyId] = useState<string | null>(null);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loadingTenants, setLoadingTenants] = useState<boolean>(false);
   const [audits, setAudits] = useState<any[]>([]);
@@ -294,20 +295,24 @@ export default function AdminUsers() {
                               size="small"
                               variant="contained"
                               color="primary"
-                              disabled={!canManage}
+                              disabled={!canManage || rowBusyId === id}
                               onClick={async () => {
                                 try {
                                   setMsg(null);
+                                  setRowBusyId(id);
                                   const resp = await api.patch(`/users/${id}`, { isActive: true });
                                   if (resp.status === 200) {
                                     setMsg({ type: 'success', text: `User ${display} reactivated.` });
-                                    loadUsers();
+                                    // Optimistically remove from inactive list
+                                    setUsers(prev => prev.filter((x: any) => (x._id || x.id) !== id));
                                     loadAudits();
                                   } else {
                                     setMsg({ type: 'error', text: 'Failed to reactivate user.' });
                                   }
                                 } catch (e: any) {
                                   setMsg({ type: 'error', text: e?.response?.data?.message || e?.response?.data?.error || 'Failed to reactivate user' });
+                                } finally {
+                                  setRowBusyId(null);
                                 }
                               }}
                             >
@@ -317,21 +322,25 @@ export default function AdminUsers() {
                               size="small"
                               variant="outlined"
                               color="error"
-                              disabled={!canManage}
+                              disabled={!canManage || rowBusyId === id}
                               onClick={async () => {
                                 if (!window.confirm(`Permanently delete ${display}? This cannot be undone.`)) return;
                                 try {
                                   setMsg(null);
+                                  setRowBusyId(id);
                                   const resp = await api.delete(`/users/${id}`, { params: { permanent: true } });
                                   if (resp.status === 204) {
                                     setMsg({ type: 'success', text: `User ${display} permanently deleted.` });
-                                    loadUsers();
+                                    // Optimistically remove from list
+                                    setUsers(prev => prev.filter((x: any) => (x._id || x.id) !== id));
                                     loadAudits();
                                   } else {
                                     setMsg({ type: 'error', text: 'Failed to permanently delete user.' });
                                   }
                                 } catch (e: any) {
                                   setMsg({ type: 'error', text: e?.response?.data?.message || e?.response?.data?.error || 'Failed to permanently delete user' });
+                                } finally {
+                                  setRowBusyId(null);
                                 }
                               }}
                             >

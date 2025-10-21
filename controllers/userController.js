@@ -287,7 +287,10 @@ exports.deleteUser = async (req, res, next) => {
         req,
         meta: { reason: 'permanent_delete' }
       });
-      return res.status(204).json({ status: 'success', data: null });
+      // 204 with minimal body; some clients may still parse
+      res.status(204);
+      try { res.json({ status: 'success', data: { id: String(req.params.id) } }); } catch { res.end(); }
+      return;
     }
 
     const user = await User.findByIdAndUpdate(
