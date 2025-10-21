@@ -329,10 +329,12 @@ export default function AdminUsers() {
                                   setMsg(null);
                                   setRowBusyId(id);
                                   const resp = await api.delete(`/users/${id}`, { params: { permanent: true } });
-                                  if (resp.status === 200 || resp.status === 204) {
+                                  if (resp.status === 200 && (resp.data?.deletedCount === 1 || resp.data?.deletedId)) {
                                     setMsg({ type: 'success', text: `User ${display} permanently deleted.` });
                                     // Optimistically remove from list
                                     setUsers(prev => prev.filter((x: any) => (x._id || x.id) !== id));
+                                    // Reconcile with server to ensure it's truly gone
+                                    await loadUsers();
                                     loadAudits();
                                   } else {
                                     setMsg({ type: 'error', text: 'Failed to permanently delete user.' });

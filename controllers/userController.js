@@ -279,7 +279,10 @@ exports.deleteUser = async (req, res, next) => {
       if (target.isActive !== false) {
         return next(new AppError('User must be inactive before permanent deletion', 400));
       }
-      await User.findByIdAndDelete(req.params.id);
+      const delRes = await User.deleteOne({ _id: req.params.id });
+      if (!delRes || delRes.deletedCount !== 1) {
+        return next(new AppError('Permanent delete failed — user not found', 404));
+      }
       await logUserAudit({
         action: 'USER_DELETED',
         actorId: req.user._id,
@@ -288,7 +291,7 @@ exports.deleteUser = async (req, res, next) => {
         req,
         meta: { reason: 'permanent_delete' }
       });
-      return res.status(200).json({ status: 'success', deletedId: String(req.params.id) });
+      return res.status(200).json({ status: 'success', deletedId: String(req.params.id), deletedCount: delRes.deletedCount });
     }
 
     const user = await User.findByIdAndUpdate(
