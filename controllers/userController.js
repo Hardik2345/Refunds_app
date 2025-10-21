@@ -202,6 +202,10 @@ exports.getAllUsers = catchAsync(async (req, res, next) => {
     .sort()
     .limitFields()
     .pagination();
+  // Re-assert includeInactive option in case chaining replaced query options
+  if (includeInactive && typeof features.query?.setOptions === 'function') {
+    features.query.setOptions({ includeInactive: true });
+  }
   const doc = await features.query;
 
   res.status(200).json({
