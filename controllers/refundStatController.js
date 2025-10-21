@@ -61,6 +61,7 @@ exports.getAllRefundStats = catchAsync(async (req, res, next) => {
     tenant,
     user, // when provided, match any attempt actor
     lastRefundAt,
+    phone,
   } = req.query || {};
 
   const p = Math.max(1, parseInt(page));
@@ -77,6 +78,19 @@ exports.getAllRefundStats = catchAsync(async (req, res, next) => {
 
   const pipeline = [];
   if (Object.keys(match).length) pipeline.push({ $match: match });
+  // Phone search: match customer key written as `phone:<value>` accommodating optional +91 and leading zeros
+  if (phone && String(phone).trim()) {
+    const raw = String(phone).trim();
+    const digits = raw.replace(/\D/g, '');
+    if (digits) {
+      const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
+      const patterns = [
+        new RegExp(`^phone:(?:\\+?91)?0*${last10}$`, 'i'),
+        new RegExp(`^phone:${digits}$`, 'i'),
+      ];
+      pipeline.push({ $match: { $or: patterns.map(r => ({ customer: { $regex: r } })) } });
+    }
+  }
   if (user) {
     pipeline.push({ $match: { 'attempts.actor': RefundStat.db.cast(RefundStat.collection.name, 'attempts.actor', user) } });
   }
@@ -104,13 +118,28 @@ exports.getAllRefundStats = catchAsync(async (req, res, next) => {
     { $unwind: { path: '$tenant', preserveNullAndEmptyArrays: true } }
   );
 
+  console.log('Pipeline:', JSON.stringify(pipeline, null, 2));
+
+  const totalPipeline = [
+    ...(Object.keys(match).length ? [{ $match: match }] : []),
+    ...(phone && String(phone).trim() ? (() => {
+      const raw = String(phone).trim();
+      const digits = raw.replace(/\D/g, '');
+      if (!digits) return [];
+      const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
+      const patterns = [
+        new RegExp(`^phone:(?:\\+?91)?0*${last10}$`, 'i'),
+        new RegExp(`^phone:${digits}$`, 'i'),
+      ];
+      return [{ $match: { $or: patterns.map(r => ({ customer: { $regex: r } })) } }];
+    })() : []),
+    ...(user ? [{ $match: { 'attempts.actor': RefundStat.db.cast(RefundStat.collection.name, 'attempts.actor', user) } }] : []),
+    { $count: 'count' }
+  ];
+
   const [items, totalArr] = await Promise.all([
     RefundStat.aggregate(pipeline),
-    RefundStat.aggregate([
-      ...(Object.keys(match).length ? [{ $match: match }] : []),
-      ...(user ? [{ $match: { 'attempts.actor': RefundStat.db.cast(RefundStat.collection.name, 'attempts.actor', user) } }] : []),
-      { $count: 'count' }
-    ])
+    RefundStat.aggregate(totalPipeline)
   ]);
   const total = totalArr[0]?.count || 0;
 

@@ -1,19 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  Box,
-  Card,
-  CardHeader,
-  CardContent,
-  TextField,
-  MenuItem,
-  Button,
-  Typography,
-  Alert,
-  CircularProgress,
-  Grid,
-  Chip,
-  Divider,
-} from '@mui/material';
+import { Box, Card, CardHeader, CardContent, TextField, Button, Typography, Alert, CircularProgress, Grid, Chip, Divider, MenuItem } from '@mui/material';
 import api from '../apiClient';
 import { useAuth } from '../auth/AuthContext';
 
@@ -49,11 +35,7 @@ type ListResponse<T> = {
   data: { data: T[] };
 };
 
-type UsersListResponse = {
-  status: string;
-  results: number;
-  data: { data: User[] };
-};
+// removed UsersListResponse; user filter deprecated in favor of phone search
 
 export default function AdminActivity() {
   const { user } = useAuth();
@@ -62,8 +44,9 @@ export default function AdminActivity() {
   const isPlatformAdmin = normalized.includes('platform_admin');
 
   const [day, setDay] = useState<string>('');
-  const [userId, setUserId] = useState<string>('');
-  const [users, setUsers] = useState<User[]>([]);
+  // Phone search (debounced)
+  const [phone, setPhone] = useState<string>('');
+  const [debouncedPhone, setDebouncedPhone] = useState<string>('');
   const [stats, setStats] = useState<RefundStat[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,18 +54,13 @@ export default function AdminActivity() {
   const [limit, setLimit] = useState(20);
   const [totalShown, setTotalShown] = useState(0);
 
-  const canFilterUser = isPlatformAdmin; // Super admin: only day filter per requirements
-
+  // Debounce phone input
   useEffect(() => {
-    if (isPlatformAdmin) {
-      // Load users for this tenant for the user filter
-      // Tenant is sourced from TenantSelector (header) via axios default header
-      api
-        .get<UsersListResponse>('/users', { params: { limit: 1000, fields: 'name,email,role' } })
-        .then((res) => setUsers(res.data.data.data || []))
-        .catch(() => setUsers([]));
-    }
-  }, [isPlatformAdmin]);
+    const t = setTimeout(() => {
+      setDebouncedPhone(phone.trim());
+    }, 400);
+    return () => clearTimeout(t);
+  }, [phone]);
 
   const queryParams = useMemo(() => {
     const qp: Record<string, any> = {
@@ -93,9 +71,9 @@ export default function AdminActivity() {
       fields: 'user,tenant,customer,totalCount,successCount,lastIp,lastOutcome,lastErrorCode,lastRefundAt'
     };
     if (day) qp.day = day;
-    if (canFilterUser && userId) qp.user = userId;
+    if (debouncedPhone) qp.phone = debouncedPhone;
     return qp;
-  }, [day, canFilterUser, userId, page, limit]);
+  }, [day, debouncedPhone, page, limit]);
 
   async function loadStats() {
     setLoading(true);
@@ -121,6 +99,13 @@ export default function AdminActivity() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-refresh when debounced phone changes
+  useEffect(() => {
+    setPage(1);
+    loadStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedPhone]);
+
   function applyFilters(e?: React.FormEvent) {
     if (e) e.preventDefault();
     setPage(1);
@@ -144,7 +129,7 @@ export default function AdminActivity() {
         <Card sx={{ width: '100%', maxWidth: 960 }}>
           <CardHeader
             title="Activity Logs"
-            subheader={isPlatformAdmin ? 'Filter by day and user. Tenant is selected from the header.' : 'Filter by day (bound to your tenant).'}
+            subheader={isPlatformAdmin ? 'Filter by day and search by customer mobile. Tenant is selected from the header.' : 'Filter by day and search by customer mobile (bound to your tenant).'}
           />
           <CardContent>
             {error && (
@@ -161,34 +146,15 @@ export default function AdminActivity() {
                 onChange={(e) => setDay(e.target.value)}
                 InputLabelProps={{ shrink: true }}
               />
-              {canFilterUser && (
-                <TextField
-                  select
-                  label="User"
-                  size="small"
-                  sx={{ minWidth: 220 }}
-                  value={userId}
-                  onChange={(e) => setUserId(e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  SelectProps={{
-                    displayEmpty: true,
-                    renderValue: (selected) => {
-                      if (!selected) {
-                        return <span style={{ color: 'rgba(0,0,0,0.6)' }}>All users</span>;
-                      }
-                      const u = users.find((x) => x._id === selected);
-                      return (u?.name || u?.email || 'User') as unknown as string;
-                    },
-                  }}
-                >
-                  <MenuItem value="">All users</MenuItem>
-                  {users.map((u) => (
-                    <MenuItem key={u._id} value={u._id}>
-                      {u.name || u.email || u._id}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              )}
+              <TextField
+                label="Customer mobile"
+                placeholder="e.g. 9876543210 or +91 98765 43210"
+                size="small"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                sx={{ minWidth: 260 }}
+              />
               <Button type="submit" variant="contained" disabled={loading} sx={{ ml: { xs: 0, sm: 1 } }}>
                 {loading ? <CircularProgress size={18} /> : 'Apply'}
               </Button>
