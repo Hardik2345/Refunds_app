@@ -291,63 +291,35 @@ export default function AdminUsers() {
                           )}
                           {tab === 'inactive' && (
                             <Stack direction="row" spacing={1} justifyContent="flex-end">
-                            <Button
-                              size="small"
-                              variant="contained"
-                              color="primary"
-                              disabled={!canManage || rowBusyId === id}
-                              onClick={async () => {
-                                try {
-                                  setMsg(null);
-                                  setRowBusyId(id);
-                                  const resp = await api.patch(`/users/${id}`, { isActive: true });
-                                  if (resp.status === 200) {
-                                    setMsg({ type: 'success', text: `User ${display} reactivated.` });
-                                    // Optimistically remove from inactive list
-                                    setUsers(prev => prev.filter((x: any) => (x._id || x.id) !== id));
-                                    loadAudits();
-                                  } else {
-                                    setMsg({ type: 'error', text: 'Failed to reactivate user.' });
+                              <Button
+                                size="small"
+                                variant="text"
+                                color="error"
+                                sx={{ fontWeight: 600, opacity: 0.9 }}
+                                disabled={!canManage || rowBusyId === id}
+                                onClick={async () => {
+                                  if (!window.confirm(`Permanently delete ${display}? This cannot be undone.`)) return;
+                                  try {
+                                    setMsg(null);
+                                    setRowBusyId(id);
+                                    const resp = await api.delete(`/users/${id}`, { params: { permanent: true } });
+                                    if (resp.status === 200 && (resp.data?.deletedCount === 1 || resp.data?.deletedId)) {
+                                      setMsg({ type: 'success', text: `User ${display} permanently deleted.` });
+                                      setUsers(prev => prev.filter((x: any) => (x._id || x.id) !== id));
+                                      await loadUsers();
+                                      loadAudits();
+                                    } else {
+                                      setMsg({ type: 'error', text: 'Failed to permanently delete user.' });
+                                    }
+                                  } catch (e: any) {
+                                    setMsg({ type: 'error', text: e?.response?.data?.message || e?.response?.data?.error || 'Failed to permanently delete user' });
+                                  } finally {
+                                    setRowBusyId(null);
                                   }
-                                } catch (e: any) {
-                                  setMsg({ type: 'error', text: e?.response?.data?.message || e?.response?.data?.error || 'Failed to reactivate user' });
-                                } finally {
-                                  setRowBusyId(null);
-                                }
-                              }}
-                            >
-                              Reactivate
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              color="error"
-                              disabled={!canManage || rowBusyId === id}
-                              onClick={async () => {
-                                if (!window.confirm(`Permanently delete ${display}? This cannot be undone.`)) return;
-                                try {
-                                  setMsg(null);
-                                  setRowBusyId(id);
-                                  const resp = await api.delete(`/users/${id}`, { params: { permanent: true } });
-                                  if (resp.status === 200 && (resp.data?.deletedCount === 1 || resp.data?.deletedId)) {
-                                    setMsg({ type: 'success', text: `User ${display} permanently deleted.` });
-                                    // Optimistically remove from list
-                                    setUsers(prev => prev.filter((x: any) => (x._id || x.id) !== id));
-                                    // Reconcile with server to ensure it's truly gone
-                                    await loadUsers();
-                                    loadAudits();
-                                  } else {
-                                    setMsg({ type: 'error', text: 'Failed to permanently delete user.' });
-                                  }
-                                } catch (e: any) {
-                                  setMsg({ type: 'error', text: e?.response?.data?.message || e?.response?.data?.error || 'Failed to permanently delete user' });
-                                } finally {
-                                  setRowBusyId(null);
-                                }
-                              }}
-                            >
-                              Permanent Delete
-                            </Button>
+                                }}
+                              >
+                                Permanent Delete
+                              </Button>
                             </Stack>
                           )}
                         </TableCell>
