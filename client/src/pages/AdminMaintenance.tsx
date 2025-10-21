@@ -67,9 +67,9 @@ export default function AdminMaintenance() {
         <CardHeader title="Maintenance" subheader="Delete audit and refund logs (platform admin only)" />
         <CardContent>
           {msg && <Alert severity={msg.type} sx={{ mb: 2 }}>{msg.text}</Alert>}
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={6}>
-              <Card variant="outlined">
+          <Grid container spacing={2} alignItems="stretch">
+            <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
+              <Card variant="outlined" sx={{ flex: 1, height: '100%' }}>
                 <CardHeader title="User Audit Logs" subheader="Delete by tenant (header) and/or date range" />
                 <CardContent>
                   <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -83,8 +83,8 @@ export default function AdminMaintenance() {
                 </CardContent>
               </Card>
             </Grid>
-            <Grid item xs={12} md={6}>
-              <Card variant="outlined">
+            <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
+              <Card variant="outlined" sx={{ flex: 1, height: '100%' }}>
                 <CardHeader title="Refund Logs" subheader="Delete by tenant (header), date range, and/or customer mobile" />
                 <CardContent>
                   <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
