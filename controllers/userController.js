@@ -204,6 +204,7 @@ exports.getAllUsers = catchAsync(async (req, res, next) => {
     { $lookup: { from: 'tenants', localField: 'storeId', foreignField: '_id', as: 'store' } },
     { $unwind: { path: '$store', preserveNullAndEmptyArrays: true } },
     { $project: {
+        _id: 1,
         name: 1,
         email: 1,
         role: 1,
