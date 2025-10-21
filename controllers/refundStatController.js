@@ -156,3 +156,37 @@ exports.getAllRefundStats = catchAsync(async (req, res, next) => {
 // Keep single-get via factory (populate not critical here)
 const handlerFactory = require('./handlerFactory');
 exports.getRefundStat = handlerFactory.getOne(RefundStat);
+
+// DELETE /api/v1/refund-stats
+// Query: from, to, phone (matches same as list), tenant via middleware; require at least one of tenant or date/phone
+exports.deleteRefundStats = catchAsync(async (req, res, next) => {
+  const { from, to, phone } = req.query || {};
+
+  const match = {};
+  if (req.tenant?._id) match.tenant = req.tenant._id;
+
+  if (phone && String(phone).trim()) {
+    const raw = String(phone).trim();
+    const digits = raw.replace(/\D/g, '');
+    if (digits) {
+      const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
+      match.$or = [
+        { customer: { $regex: new RegExp(`^phone:(?:\\+?91)?0*${last10}$`, 'i') } },
+        { customer: { $regex: new RegExp(`^phone:${digits}$`, 'i') } },
+      ];
+    }
+  }
+
+  if (from || to) {
+    match.lastRefundAt = {};
+    if (from) match.lastRefundAt.$gte = new Date(String(from));
+    if (to) match.lastRefundAt.$lte = new Date(String(to));
+  }
+
+  if (!match.tenant && !match.lastRefundAt && !match.$or) {
+    return res.status(400).json({ error: 'Provide a tenant (x-tenant-id), phone, or a date range (from/to) to delete refund logs.' });
+  }
+
+  const result = await RefundStat.deleteMany(match);
+  return res.status(200).json({ status: 'success', deletedCount: result?.deletedCount || 0 });
+});

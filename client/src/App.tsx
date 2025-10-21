@@ -11,6 +11,7 @@ import AdminRules from './pages/AdminRules';
 import AdminTenants from './pages/AdminTenants';
 import AdminUsers from './pages/AdminUsers';
 import AdminActivity from './pages/AdminActivity';
+import AdminMaintenance from './pages/AdminMaintenance';
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { Link } from '@mui/material';
 import UserMenu from './components/UserMenu';
@@ -51,6 +52,7 @@ export default function App() {
               <Route path="/admin/tenants" element={<ProtectedRoute><AdminRoute allowedRoles={["platform_admin"]}><AdminTenants /></AdminRoute></ProtectedRoute>} />
               <Route path="/admin/users" element={<ProtectedRoute><AdminRoute><AdminUsers /></AdminRoute></ProtectedRoute>} />
               <Route path="/admin/activity" element={<ProtectedRoute><AdminRoute allowedRoles={["platform_admin","super_admin"]}><AdminActivity /></AdminRoute></ProtectedRoute>} />
+              <Route path="/admin/maintenance" element={<ProtectedRoute><AdminRoute allowedRoles={["platform_admin"]}><AdminMaintenance /></AdminRoute></ProtectedRoute>} />
               <Route path="/" element={<Navigate to="/agent" replace />} />
             </Routes>
           </Container>
@@ -82,6 +84,7 @@ function NavLinks() {
   const normalizedRoles = roles.map((r: string) => r?.toLowerCase?.());
   const canSeeTenantsLink = normalizedRoles.includes('platform_admin');
   const canSeeActivity = normalizedRoles.includes('platform_admin') || normalizedRoles.includes('super_admin');
+  const canSeeMaintenance = normalizedRoles.includes('platform_admin');
   const { pathname } = useLocation();
 
   const items: Array<{ to: string; label: string; show: boolean }> = [
@@ -90,6 +93,7 @@ function NavLinks() {
     { to: '/admin/tenants', label: 'Tenants', show: canSeeTenantsLink },
     { to: '/admin/users', label: 'Users', show: true },
     { to: '/admin/activity', label: 'Activity', show: canSeeActivity },
+    { to: '/admin/maintenance', label: 'Maintenance', show: canSeeMaintenance },
   ];
   return (
     <Box sx={{ display:'flex', alignItems:'center', gap: 1.5 }}>

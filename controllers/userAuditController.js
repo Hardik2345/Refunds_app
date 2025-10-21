@@ -60,3 +60,26 @@ exports.listAudits = catchAsync(async (req, res, next) => {
     data: { data: items },
   });
 });
+
+// DELETE /api/v1/user-audits
+// Query: from, to (ISO), tenant optional (x-tenant-id used via middleware). If neither is provided, block.
+exports.deleteAudits = catchAsync(async (req, res, next) => {
+  const { from, to } = req.query || {};
+
+  const filter = {};
+  if (req.tenant?._id) filter.tenant = req.tenant._id;
+  // If ALL (no req.tenant), allow cross-tenant delete for platform_admin (route-enforced)
+
+  if (from || to) {
+    filter.createdAt = {};
+    if (from) filter.createdAt.$gte = new Date(String(from));
+    if (to) filter.createdAt.$lte = new Date(String(to));
+  }
+
+  if (!filter.tenant && !filter.createdAt) {
+    return res.status(400).json({ error: 'Provide a tenant (x-tenant-id) or a date range (from/to) to delete audit logs.' });
+  }
+
+  const result = await require('../models/userAuditModel').deleteMany(filter);
+  return res.status(200).json({ status: 'success', deletedCount: result?.deletedCount || 0 });
+});

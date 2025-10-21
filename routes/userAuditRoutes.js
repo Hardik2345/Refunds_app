@@ -13,5 +13,7 @@ router.use(authController.restrictTo('platform_admin', 'user_admin', 'super_admi
 router.use(tenantMiddleware);
 
 router.get('/', userAuditController.listAudits);
+// Delete audits (platform_admin only). Tenant scoping via middleware; x-tenant-id=ALL allows cross-tenant delete.
+router.delete('/', authController.restrictTo('platform_admin'), userAuditController.deleteAudits);
 
 module.exports = router;

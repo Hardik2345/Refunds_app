@@ -14,6 +14,7 @@ const filters = [statsController.scopeToTenant, statsController.setDateFilters];
 
 // GET /api/v1/refund-stats -> list all with filters
 router.get('/', secure, adminsOnly, filters, statsController.getAllRefundStats);
+router.delete('/', secure, authController.restrictTo('platform_admin'), filters, statsController.deleteRefundStats);
 
 // GET /api/v1/refund-stats/user/:userId -> list all for a specific user
 router.get('/user/:userId', secure, adminsOnly, filters, statsController.setUserFilter, statsController.getAllRefundStats);
