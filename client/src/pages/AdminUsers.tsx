@@ -241,15 +241,21 @@ export default function AdminUsers() {
             <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider', backgroundColor: 'background.paper' }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>All Users</Typography>
               <Typography variant="caption" color="text.secondary">
-                {loading ? 'Loading…' : `${users.length} ${tab} ${users.length === 1 ? 'user' : 'users'}${isSuperAdmin ? ' (scoped to your tenant)' : ''}`}
+                {loading
+                  ? 'Loading…'
+                  : isSuperAdmin
+                    ? `${users.length} ${users.length === 1 ? 'user' : 'users'} (scoped to your tenant)`
+                    : `${users.length} ${tab} ${users.length === 1 ? 'user' : 'users'}`}
               </Typography>
             </Box>
-            <Box sx={{ px: 2, pt: 1 }}>
-              <Tabs value={tab} onChange={(_, v) => setTab(v)} aria-label="user status tabs" variant="fullWidth">
-                <Tab label="Active" value="active" />
-                {!isSuperAdmin && <Tab label="Inactive" value="inactive" />}
-              </Tabs>
-            </Box>
+            {!isSuperAdmin && (
+              <Box sx={{ px: 2, pt: 1 }}>
+                <Tabs value={tab} onChange={(_, v) => setTab(v)} aria-label="user status tabs" variant="fullWidth">
+                  <Tab label="Active" value="active" />
+                  <Tab label="Inactive" value="inactive" />
+                </Tabs>
+              </Box>
+            )}
             <Box sx={{ maxHeight: 440, overflow: 'auto' }}>
               <Table size="small" stickyHeader>
                 <TableHead>
