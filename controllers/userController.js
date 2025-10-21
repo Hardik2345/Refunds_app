@@ -1,4 +1,5 @@
 const AppError = require('../utils/appError');
+const mongoose = require('mongoose');
 const User = require('./../models/userModel');
 const catchAsync = require('./../utils/catchAsync');
 const factory = require('./handlerFactory');
@@ -186,7 +187,14 @@ exports.getAllUsers = catchAsync(async (req, res, next) => {
     if (!tenantId) {
       return next(new AppError('Your account is not assigned to a tenant', 403));
     }
-    match = { storeId: User.db.cast(User.collection.name, 'storeId', tenantId) };
+    // Ensure valid ObjectId casting for aggregation match
+    const tid = mongoose.Types.ObjectId.isValid(String(tenantId))
+      ? new mongoose.Types.ObjectId(String(tenantId))
+      : null;
+    if (!tid) {
+      return next(new AppError('Invalid tenant id on your account', 403));
+    }
+    match = { storeId: tid };
   }
 
   const limit = Math.max(1, Math.min(2000, parseInt(req.query?.limit) || 1000));
