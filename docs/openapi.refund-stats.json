@@ -99,6 +99,14 @@
           "data": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/RefundStat" } } }
         }
       }
+  },
+  "DeleteResult": {
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "example": "success" },
+        "deletedCount": { "type": "integer" },
+        "note": { "type": "string", "nullable": true }
+      }
     },
     "parameters": {
       "X-Tenant-Id": {
@@ -206,6 +214,25 @@
         "responses": {
           "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RefundStatItemResponse" } } } },
           "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+      ,
+      "delete": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["RefundStats"],
+        "summary": "Permanently delete refund-stat activity logs (platform_admin)",
+        "description": "Maintenance endpoint for platform administrators to delete refund-stat documents that match the provided filters (tenant-scoped). For platform_admin callers, the x-tenant-id header must be supplied. Use caution: this is irreversible.",
+        "parameters": [
+          { "$ref": "#/components/parameters/X-Tenant-Id" },
+          { "$ref": "#/components/parameters/FilterUser" },
+          { "$ref": "#/components/parameters/FilterCustomer" },
+          { "name": "day", "in": "query", "schema": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" }, "description": "UTC day to target" },
+          { "$ref": "#/components/parameters/HelperStart" },
+          { "$ref": "#/components/parameters/HelperEnd" }
+        ],
+        "responses": {
+          "200": { "description": "Deletion summary", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeleteResult" } } } },
+          "401": { "description": "Unauthorized" }
         }
       }
     }

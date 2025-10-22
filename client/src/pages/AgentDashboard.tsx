@@ -36,7 +36,8 @@ export default function AgentDashboard() {
 		orderId: number | null;
 		amountLabel: string;
 		customerName: string;
-	}>({ open: false, type: null, orderId: null, amountLabel: '', customerName: '' });
+		note?: string;
+	}>({ open: false, type: null, orderId: null, amountLabel: '', customerName: '', note: '' });
 	// Confirm action loading state
 	const [confirmLoading, setConfirmLoading] = useState(false);
 	// Result dialog state (blocks until Continue)
@@ -105,7 +106,8 @@ export default function AgentDashboard() {
 
 	async function onRefund(orderId: number) {
 		try {
-			const payload = searchMode === 'phone' ? { phone: query, orderId } : { orderId };
+			const payloadBase = searchMode === 'phone' ? { phone: query, orderId } : { orderId };
+			const payload = { ...payloadBase, note: confirm.note || undefined };
 			const res = await api.post('/refund', payload);
 			if (res.status === 200) {
 				setResultDlg({ open: true, status: 'success', message: 'Refund executed successfully' });
@@ -205,7 +207,7 @@ export default function AgentDashboard() {
 
 	function openConfirmFull(order: OrderSummary) {
 		const amountLabel = order.current_subtotal_price ? `₹${Number(parseFloat(order.current_subtotal_price)).toFixed(2)}` : 'N/A';
-		setConfirm({ open: true, type: 'full', orderId: order.id, amountLabel, customerName: customerNameFor(order) });
+		setConfirm({ open: true, type: 'full', orderId: order.id, amountLabel, customerName: customerNameFor(order), note: '' });
 	}
 
 	function computePartialTotal(orderId: number) {
@@ -226,7 +228,7 @@ export default function AgentDashboard() {
 			return;
 		}
 		const amountLabel = `₹${total.toFixed(2)}`;
-		setConfirm({ open: true, type: 'partial', orderId: order.id, amountLabel, customerName: customerNameFor(order) });
+		setConfirm({ open: true, type: 'partial', orderId: order.id, amountLabel, customerName: customerNameFor(order), note: '' });
 	}
 
 	async function onConfirmProceed() {
@@ -450,6 +452,17 @@ export default function AgentDashboard() {
 					<Typography variant="caption" color="text.secondary">Amount</Typography>
 					<Typography variant="caption">{confirm.amountLabel}</Typography>
 				</Box>
+				<Box sx={{ mt: 2 }}>
+					<TextField
+						label="Note (optional)"
+						value={confirm.note || ''}
+						onChange={(e) => setConfirm(c => ({ ...c, note: e.target.value }))}
+						multiline
+						minRows={2}
+						fullWidth
+						size="small"
+					/>
+				</Box>
 			</DialogContent>
 			<DialogActions>
 				<Button onClick={onConfirmCancel}>Cancel</Button>
@@ -543,6 +556,17 @@ export default function AgentDashboard() {
 										</Box>
 									</Tooltip>
 								)}
+								<Box sx={{ mt: 2 }}>
+									<TextField
+										label="Note (optional)"
+										value={confirm.note || ''}
+										onChange={(e) => setConfirm(c => ({ ...c, note: e.target.value }))}
+										multiline
+										minRows={2}
+										fullWidth
+										size="small"
+									/>
+								</Box>
 							</Box>
 						)}
 					</Box>

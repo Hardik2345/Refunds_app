@@ -10,7 +10,8 @@ const PendingRefundSchema = new Schema({
   payload: {
     phone: String,
     orderId: String,
-    amount: { type: Number, required: true }
+    amount: { type: Number, required: false },
+    note: { type: String, required: false }
   },
 
   // snapshot for audit & reproducibility

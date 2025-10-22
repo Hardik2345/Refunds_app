@@ -41,6 +41,15 @@
           "updatedAt": { "type": "string", "format": "date-time" }
         }
       }
+      ,
+      "DeleteResult": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "deletedCount": { "type": "integer" },
+          "note": { "type": "string", "nullable": true }
+        }
+      }
     }
   },
   "paths": {
@@ -86,6 +95,25 @@
             }
           },
           "403": { "description": "Forbidden" }
+        }
+      }
+      ,
+      "delete": {
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["UserAudit"],
+        "summary": "Permanently delete user audit logs (platform_admin)",
+        "description": "Maintenance endpoint intended for platform administrators. Deletes audit records matching provided filters. This action is restricted to users with platform_admin role; for platform_admin, the x-tenant-id header must be provided to scope the deletion. The endpoint returns a summary of the deletion count.",
+        "parameters": [
+          { "name": "x-tenant-id", "in": "header", "schema": { "type": "string" }, "required": true, "description": "Tenant ID header required for platform_admin to select tenant scope." },
+          { "name": "from", "in": "query", "schema": { "type": "string", "format": "date-time" } },
+          { "name": "to", "in": "query", "schema": { "type": "string", "format": "date-time" } },
+          { "name": "actor", "in": "query", "schema": { "type": "string" } },
+          { "name": "targetUser", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Deletion summary", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeleteResult" } } } },
+          "403": { "description": "Forbidden" },
+          "401": { "description": "Unauthorized" }
         }
       }
     }

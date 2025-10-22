@@ -113,6 +113,25 @@
           "data": { "type": "object", "properties": { "data": { "$ref": "#/components/schemas/UserPublic" } } }
         }
       }
+      ,
+      "UpdateUserRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "phone": { "type": "string" },
+          "role": { "type": "string", "enum": ["super_admin", "refund_agent", "platform_admin"] },
+          "isActive": { "type": "boolean", "description": "Set to true to reactivate a soft-deleted user" }
+        }
+      },
+      "DeleteResult": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "deletedCount": { "type": "integer" },
+          "deletedId": { "type": "string", "nullable": true }
+        }
+      }
     }
   },
   "paths": {
@@ -226,6 +245,7 @@
         "summary": "List users (admins)",
         "description": "Role-based scoping: super_admin sees only users assigned to their tenant (storeId). platform_admin and user_admin can see all users.",
         "parameters": [
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["active", "inactive", "all"], "default": "active" }, "description": "Filter by user status: active (default), inactive, or all (requires platform_admin/ALL tenant selection)" },
           { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
           { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 100 } },
           { "name": "sort", "in": "query", "schema": { "type": "string", "example": "-createdAt" } },
@@ -266,6 +286,7 @@
         "tags": ["Users"],
         "summary": "Update user (admins)",
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": false, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateUserRequest" } } } },
         "responses": {
           "200": { "description": "Updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserDocResponse" } } } },
           "403": { "description": "Forbidden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
@@ -276,10 +297,14 @@
         "security": [{ "bearerAuth": [] }],
         "tags": ["Users"],
         "summary": "Delete user (admins)",
-        "description": "Soft-deactivates the user. Side effect: creates a USER_DELETED audit record with actor and targetUser.",
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "description": "Soft-deactivates the user by default. If the query parameter 'permanent=true' is supplied and the caller is a platform_admin, the endpoint will attempt a permanent (hard) delete of the inactive user and return a deletion summary.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "permanent", "in": "query", "required": false, "schema": { "type": "boolean" }, "description": "If true and caller is platform_admin, perform a permanent delete (only allowed for already-inactive users). Returns a deletion summary." }
+        ],
         "responses": {
-          "204": { "description": "Deleted" },
+          "204": { "description": "Soft-deleted (no content)" },
+          "200": { "description": "Permanent delete summary", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeleteResult" } } } },
           "403": { "description": "Forbidden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }

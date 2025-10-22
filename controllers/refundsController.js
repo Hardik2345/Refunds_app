@@ -414,7 +414,8 @@ exports.refundOrderByPhone = async (req, res) => {
         payload: {
           phone: req.body.phone || null,
           orderId: req.body.orderId || null,
-          amount: Number(req.body.amount)
+          amount: Number(req.body.amount),
+          note: req.body.note || null
         },
         ruleDecision: res.locals.ruleDecision,
         context: req.ruleContext
@@ -429,6 +430,7 @@ exports.refundOrderByPhone = async (req, res) => {
 
     const tenant = req.tenant;
   const { phone, orderId, lineItems } = req.body;
+  const note = req.body.note || null;
 
     // --- Resolve target order by orderId (preferred) or by phone ---
     let targetOrder = null;
@@ -498,7 +500,7 @@ exports.refundOrderByPhone = async (req, res) => {
             },
           ],
           order_id: targetOrder.id,
-          note: "Partial refund via REST API",
+            note: note || "Partial refund via REST API",
           notify: true,
         },
       };
@@ -527,7 +529,7 @@ exports.refundOrderByPhone = async (req, res) => {
           ],
           shipping: { full_refund: true },
           order_id: targetOrder.id,
-          note: "Full refund via REST API after cancellation",
+          note: note || "Full refund via REST API after cancellation",
           notify: true,
         },
       };
@@ -611,6 +613,7 @@ exports.refundOrderByPhone = async (req, res) => {
                   attemptNo: 1,
                   backoffMs: 0,
                   actor: req.user._id,
+                  note: note || null,
                   orderId: String(targetOrder.id),
                   amount: amountNum,
                   partial: Array.isArray(lineItems) && lineItems.length > 0,
@@ -651,7 +654,7 @@ exports.approvePendingRefund = async (req, res) => {
       return res.status(404).json({ error: 'Pending refund not found or not pending' });
     }
 
-  const { phone, orderId, lineItems } = pending.payload;
+  const { phone, orderId, lineItems, note } = pending.payload;
 
     // --- Fetch target order again (fresh check) ---
     const orders = await getOrdersByPhone(tenant, phone);
@@ -706,7 +709,7 @@ exports.approvePendingRefund = async (req, res) => {
             },
           ],
           order_id: targetOrder.id,
-          note: 'Partial refund approved by supervisor',
+          note: note || 'Partial refund approved by supervisor',
           notify: true,
         },
       };
@@ -735,7 +738,7 @@ exports.approvePendingRefund = async (req, res) => {
           ],
           shipping: { full_refund: true },
           order_id: targetOrder.id,
-          note: 'Full refund approved by supervisor',
+          note: note || 'Full refund approved by supervisor',
           notify: true,
         },
       };
