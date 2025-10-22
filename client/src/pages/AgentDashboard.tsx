@@ -207,7 +207,7 @@ export default function AgentDashboard() {
 
 	function openConfirmFull(order: OrderSummary) {
 		const amountLabel = order.current_subtotal_price ? `₹${Number(parseFloat(order.current_subtotal_price)).toFixed(2)}` : 'N/A';
-		setConfirm({ open: true, type: 'full', orderId: order.id, amountLabel, customerName: customerNameFor(order), note: '' });
+		setConfirm(prev => ({ ...prev, open: true, type: 'full', orderId: order.id, amountLabel, customerName: customerNameFor(order), note: prev.note ?? '' }));
 	}
 
 	function computePartialTotal(orderId: number) {
@@ -228,7 +228,7 @@ export default function AgentDashboard() {
 			return;
 		}
 		const amountLabel = `₹${total.toFixed(2)}`;
-		setConfirm({ open: true, type: 'partial', orderId: order.id, amountLabel, customerName: customerNameFor(order), note: '' });
+		setConfirm(prev => ({ ...prev, open: true, type: 'partial', orderId: order.id, amountLabel, customerName: customerNameFor(order), note: prev.note ?? '' }));
 	}
 
 	async function onConfirmProceed() {
