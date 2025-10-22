@@ -254,7 +254,7 @@ export default function AgentDashboard() {
 
 	async function onPartialRefund(orderId: number) {
 		try {
-			const payload = buildPartialPayload(orderId);
+			const payload = { ...buildPartialPayload(orderId), note: confirm.note || undefined } as any;
 			if (!payload.lineItems.length) {
 				setSnack({ open: true, message: 'Select at least one line item', severity: 'error' });
 				return;
@@ -556,19 +556,20 @@ export default function AgentDashboard() {
 										</Box>
 									</Tooltip>
 								)}
-								<Box sx={{ mt: 2 }}>
-									<TextField
-										label="Note (optional)"
-										value={confirm.note || ''}
-										onChange={(e) => setConfirm(c => ({ ...c, note: e.target.value }))}
-										multiline
-										minRows={2}
-										fullWidth
-										size="small"
-									/>
-								</Box>
 							</Box>
 						)}
+						{/* Always-visible note input for partial refunds */}
+						<Box sx={{ mt: 2 }}>
+								<TextField
+									label="Note (optional)"
+									value={confirm.note || ''}
+									onChange={(e) => setConfirm(c => ({ ...c, note: e.target.value }))}
+									multiline
+									minRows={2}
+									fullWidth
+									size="small"
+								/>
+						</Box>
 					</Box>
 				)}
 			</DialogContent>
