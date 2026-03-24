@@ -43,6 +43,7 @@ const limiter = rateLimit({
   keyGenerator: ipKeyGenerator,
   message: 'Too many requests from this IP, please try again in an hour!',
 });
+
 app.use('/api', limiter);
 
 const orderRouter = require('./routes/orderRoutes');
