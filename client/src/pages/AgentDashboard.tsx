@@ -1,9 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Box, Grid, Card, CardHeader, CardContent, CardActions, Button, TextField, Typography, Alert, Snackbar, CircularProgress, Chip, Tooltip, Checkbox, InputAdornment, Dialog, DialogTitle, DialogContent, DialogActions, Tabs, Tab, MenuItem } from '@mui/material';
-import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
-import HighlightOffIcon from '@mui/icons-material/HighlightOff';
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import { Page, Layout, Card, Text, Tabs, TextField, InlineStack, Badge, Button, IndexTable, Modal, Box, Divider, Checkbox, InlineGrid, ButtonGroup } from '@shopify/polaris';
 import api from '../apiClient';
+
 
 interface OrderLineItem { id: number; name: string; quantity: number; price: string; }
 interface OrderSummary { id: number; name: string; created_at: string; current_subtotal_price: string; financial_status: string; fulfillment_status: string; line_items: OrderLineItem[]; customer: { id: number; first_name: string; last_name: string; email: string; phone: string } | null }
@@ -50,13 +48,16 @@ export default function AgentDashboard() {
 		return orders.map(o => ({ order: o, preview: preview[String(o.id)] }));
 	}, [orders, preview]);
 
-	function chipColorFor(decision?: RuleDecision | null): 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' {
-		if (!decision) return 'default';
-		if (decision.outcome === 'DENY') return 'error';
+	function badgeToneFor(decision?: RuleDecision | null): 'info' | 'success' | 'warning' | 'critical' | undefined {
+		if (!decision) return undefined;
+		if (decision.outcome === 'DENY') return 'critical';
 		if (decision.outcome === 'REQUIRE_APPROVAL') return 'warning';
 		if (decision.outcome === 'ALLOW') return 'success';
-		return 'default';
+		return undefined;
 	}
+
+
+
 
 	async function onSearch(e: React.FormEvent) {
 		e.preventDefault();
@@ -294,335 +295,241 @@ export default function AgentDashboard() {
 		setSelectionPreview(prev => ({ ...prev, [orderId]: {} as any }));
 	}
 
-	return (
-		<>
-		<Box>
-			{/* Search Panel */}
-			<Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
-				<Card sx={{ width: '100%', maxWidth: 720 }}>
-					<CardHeader title="Refunds Portal" subheader="Search by customer phone or order name to load recent orders and preview refund eligibility" />
-					<CardContent>
-						{error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-						<Box component="form" onSubmit={onSearch} sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
-							<TextField
-								select
-								label="Search by"
-								size="small"
-								sx={{ width: 140 }}
-								value={searchMode}
-								onChange={(e) => setSearchMode(e.target.value as 'phone'|'orderName')}
-							>
-								<MenuItem value="phone">Phone</MenuItem>
-								<MenuItem value="orderName">Order Name</MenuItem>
-							</TextField>
-							<TextField
-								label={searchMode === 'phone' ? 'Customer Phone' : 'Order Name (#1234)'}
-								value={query}
-								onChange={(e) => setQuery(e.target.value)}
-								fullWidth
-								size="small"
-							/>
-							<Button type="submit" variant="contained" disabled={loading || !query.trim()} sx={{ whiteSpace: 'nowrap' }}>{loading ? <CircularProgress size={18} /> : 'Search'}</Button>
-						</Box>
-					</CardContent>
-				</Card>
-			</Box>
+  const tabs = [
+    { id: 'orders-0', content: 'Orders', accessibilityLabel: 'Orders' },
+    { id: 'cashback-1', content: 'Cashback', accessibilityLabel: 'Cashback' }
+  ];
 
-			{/* Empty state */}
-			{!loading && orders && orders.length === 0 && (
-				<Alert severity="info" sx={{ mb: 2 }}>No orders found.</Alert>
-			)}
+  const resourceName = { singular: 'order', plural: 'orders' };
 
-			{/* Tabs for Orders and Cashback */}
-			<Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 1 }}>
-				<Tabs value={tab} onChange={(_, v) => setTab(v)}>
-					<Tab label="Orders" />
-					<Tab label="Cashback" />
-				</Tabs>
-			</Box>
+  const rowMarkup = merged.map(({ order, preview: p }, index) => {
+    const customer = order.customer ? `${order.customer.first_name} ${order.customer.last_name}` : 'Unknown';
+    const phone = order.customer?.phone || 'N/A';
+    const createdStr = new Date(order.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' });
+    const amount = order.current_subtotal_price ? `₹${parseFloat(order.current_subtotal_price).toLocaleString()}` : 'N/A';
+    const statusOutcome = p?.decision?.outcome || 'Pending';
+    const reason = p?.decision?.reason || 'Loading hints...';
 
-			{/* Orders Tab */}
-			{tab === 0 && (
-				<Grid container spacing={2}>
-					{merged.map(({ order, preview: p }) => (
-						<Grid item xs={12} md={6} lg={4} key={order.id} sx={{ display: 'flex' }}>
-							<Card sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
-							<CardHeader title={order.name} subheader={new Date(order.created_at).toLocaleString()} />
-							<CardContent sx={{ flexGrow: 1 }}>
-								<Typography variant="body2">Subtotal: {order.current_subtotal_price}</Typography>
-								<Typography variant="body2">Financial: {order.financial_status} | Fulfillment: {order.fulfillment_status}</Typography>
-								{order.customer && (
-									<Typography variant="body2">Customer: {order.customer.first_name} {order.customer.last_name} ({order.customer.email || 'N/A'})</Typography>
-								)}
-								{p && p.decision && (
-									<Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-										<Chip size="small" label={p.decision.outcome} color={chipColorFor(p.decision)} />
-										{p.decision.reason && (
-											<Tooltip title={p.decision.reason} arrow>
-												<Box
-													sx={{
-														fontSize: 12,
-														lineHeight: 1.2,
-														px: 1,
-														py: 0.5,
-														borderRadius: 1,
-														bgcolor: (theme) => {
-															const msg = (p.decision!.reason || '').toLowerCase().trim();
-															if (p.decision!.outcome === 'DENY') return theme.palette.warning.light;
-															if (p.decision!.outcome === 'REQUIRE_APPROVAL') return theme.palette.warning.light;
-															if (msg === 'allowed by default') return theme.palette.info.light; // message chip blue
-															return theme.palette.success.light;
-														},
-														color: (theme) => {
-															const msg = (p.decision!.reason || '').toLowerCase().trim();
-															if (p.decision!.outcome === 'DENY') return theme.palette.text.primary;
-															if (p.decision!.outcome === 'REQUIRE_APPROVAL') return theme.palette.text.primary;
-															if (msg === 'allowed by default') return theme.palette.info.contrastText;
-															return theme.palette.success.contrastText;
-														},
-														maxWidth: '100%',
-														whiteSpace: 'normal',
-														wordBreak: 'break-word',
-														overflowWrap: 'anywhere',
-													}}
-												>
-													{p.decision.reason}
-												</Box>
-											</Tooltip>
-										)}
-									</Box>
-								)}
-							</CardContent>
-							<CardActions sx={{ display: 'flex', justifyContent: 'space-between', mt: 'auto' }}>
-								<Box sx={{ display: 'flex', gap: 1 }}>
-									<Button variant="contained" onClick={() => openConfirmFull(order)} disabled={!refundEnabled(p)}>Refund Full</Button>
-									<Button variant="outlined" onClick={() => openPartialDialog(order)}>
-										Partial refund
-									</Button>
-								</Box>
-							</CardActions>
-					
-						</Card>
-					</Grid>
-				))}
-			</Grid>
-			)}
+    return (
+      <IndexTable.Row id={order.id.toString()} key={order.id} position={index}>
+        <IndexTable.Cell><Checkbox label="" checked={false} onChange={() => {}} /></IndexTable.Cell>
+        <IndexTable.Cell><Text as="span" fontWeight="semibold">{order.name}</Text></IndexTable.Cell>
+        <IndexTable.Cell>{createdStr}</IndexTable.Cell>
+        <IndexTable.Cell>{customer}</IndexTable.Cell>
+        <IndexTable.Cell>{phone}</IndexTable.Cell>
+        <IndexTable.Cell>{amount}</IndexTable.Cell>
 
-			{/* Cashback Tab */}
-			{tab === 1 && (
-				<Card sx={{ mb: 2 }}>
-					<CardHeader title="Cashback" subheader={query ? (searchMode === 'phone' ? `Customer phone: ${query}` : `Order name: ${query}`) : undefined} />
-					<CardContent>
-						{cashbackSummary ? (
-							<Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
-								<Box sx={{ p: 2, border: '1px dashed', borderColor: 'divider', borderRadius: 1 }}>
-									<Typography variant="overline" color="text.secondary">Current balance</Typography>
-									<Typography variant="h6">{cashbackSummary.totalCredits ?? '—'}</Typography>
-								</Box>
-								<Box sx={{ p: 2, border: '1px dashed', borderColor: 'divider', borderRadius: 1 }}>
-									<Typography variant="overline" color="text.secondary">Total spent</Typography>
-									<Typography variant="h6">{cashbackSummary.totalSpentCredits ?? '—'}</Typography>
-								</Box>
-							</Box>
-						) : (
-							<Alert severity="info">No cashback information available for this customer.</Alert>
-						)}
-					</CardContent>
-				</Card>
-			)}
+        <IndexTable.Cell>
+          <Badge tone={badgeToneFor(p?.decision)}>{statusOutcome}</Badge>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Text as="span" tone="subdued" variant="bodySm">{reason}</Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <ButtonGroup>
+            <Button size="slim" onClick={() => openConfirmFull(order)} disabled={!refundEnabled(p)}>Process Refund</Button>
+            <Button size="slim" variant="secondary" onClick={() => openPartialDialog(order)}>Partial Refund</Button>
+          </ButtonGroup>
+        </IndexTable.Cell>
+      </IndexTable.Row>
+    );
+  });
 
-			{/* Snackbar retained for minor pre-validation messages only */}
-			{snack && (
-				<Snackbar open={snack.open} autoHideDuration={4000} onClose={() => setSnack(null)} anchorOrigin={{ vertical: 'top', horizontal: 'center' }}>
-					<Alert severity={snack.severity} onClose={() => setSnack(null)} sx={{ width: '100%' }}>{snack.message}</Alert>
-				</Snackbar>
-			)}
-		</Box>
+  const rowMarkupCashback = merged.map(({ order, preview: p }, index) => {
+    const customer = order.customer ? `${order.customer.first_name} ${order.customer.last_name}` : 'Unknown';
+    const phone = order.customer?.phone || 'N/A';
+    const createdStr = new Date(order.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' });
+    const totalCashback = p?.ctxHints?.totalCredits != null ? `₹${parseFloat(String(p.ctxHints.totalCredits)).toLocaleString()}` : '₹0.00';
+    const totalSpent = p?.ctxHints?.totalSpentCredits != null ? `₹${parseFloat(String(p.ctxHints.totalSpentCredits)).toLocaleString()}` : '₹0.00';
+    const balance = (p?.ctxHints?.totalCredits != null && p?.ctxHints?.totalSpentCredits != null) 
+                      ? `₹${parseFloat(String(p.ctxHints.totalCredits - p.ctxHints.totalSpentCredits)).toLocaleString()}` 
+                      : '₹0.00';
 
-		{/* Confirm Dialog */}
-		<Dialog open={confirm.open} onClose={onConfirmCancel} maxWidth="xs" fullWidth>
-			<DialogTitle>Confirm refund</DialogTitle>
-			<DialogContent>
-				<Typography variant="body2" sx={{ mb: 1 }}>
-					Are you sure you want to refund this order?
-				</Typography>
-				<Box sx={{ display: 'grid', gridTemplateColumns: 'auto 1fr', rowGap: 0.5, columnGap: 1, mt: 1 }}>
-					<Typography variant="caption" color="text.secondary">Customer</Typography>
-					<Typography variant="caption">{confirm.customerName}</Typography>
-					<Typography variant="caption" color="text.secondary">Amount</Typography>
-					<Typography variant="caption">{confirm.amountLabel}</Typography>
-				</Box>
-				<Box sx={{ mt: 2 }}>
-					<TextField
-						label="Note (optional)"
-						value={confirm.note || ''}
-						onChange={(e) => setConfirm(c => ({ ...c, note: e.target.value }))}
-						multiline
-						minRows={2}
-						fullWidth
-						size="small"
-					/>
-				</Box>
-			</DialogContent>
-			<DialogActions>
-				<Button onClick={onConfirmCancel}>Cancel</Button>
-				<Button variant="contained" onClick={onConfirmProceed} autoFocus disabled={confirmLoading}>
-					{confirmLoading ? <CircularProgress size={18} /> : 'Confirm'}
-				</Button>
-			</DialogActions>
-		</Dialog>
+    return (
+      <IndexTable.Row id={`cashback-${order.id}`} key={order.id} position={index}>
+        <IndexTable.Cell><Checkbox label="" checked={false} onChange={() => {}} /></IndexTable.Cell>
+        <IndexTable.Cell><Text as="span" fontWeight="semibold">{order.name}</Text></IndexTable.Cell>
+        <IndexTable.Cell>{createdStr}</IndexTable.Cell>
+        <IndexTable.Cell>{customer}</IndexTable.Cell>
+        <IndexTable.Cell>{phone}</IndexTable.Cell>
+        <IndexTable.Cell>{totalCashback}</IndexTable.Cell>
+        <IndexTable.Cell>{totalSpent}</IndexTable.Cell>
+        <IndexTable.Cell>{balance}</IndexTable.Cell>
+      </IndexTable.Row>
+    );
+  });
 
-		{/* Partial Refund Dialog */}
-		<Dialog open={partialDlg.open} onClose={closePartialDialog} maxWidth="sm" fullWidth scroll="paper">
-			<DialogTitle>Partial refund{partialDlg.order ? ` • ${partialDlg.order.name}` : ''}</DialogTitle>
-			<DialogContent sx={{ maxHeight: '60vh', overflowY: 'auto' }}>
-						{partialDlg.order && (
-					<Box>
-						<Typography variant="subtitle2" sx={{ mb: 1 }}>Select line items to refund</Typography>
-						<Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-							{partialDlg.order.line_items.map((li) => {
-								const entry = (selections[partialDlg.order!.id] || {})[li.id];
-								const selected = !!entry?.selected;
-								const defaultQty = 1;
-								const defaultAmount = (defaultQty * unitPrice(li)).toFixed(2);
-								return (
-									<Box key={li.id} sx={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', alignItems: 'center', gap: 1, border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1 }}>
-										<Checkbox checked={selected} onChange={(e) => onToggleLine(partialDlg.order!.id, li, e.target.checked)} />
-										<Box>
-											<Typography variant="body2" sx={{ fontWeight: 500 }}>{li.name}</Typography>
-											<Typography variant="caption" color="text.secondary">Qty available: {li.quantity} • Unit: {Number(unitPrice(li)).toFixed(2)}</Typography>
-										</Box>
-										<Box sx={{ display: 'flex', gap: 1, opacity: selected ? 1 : 0.6 }}>
-											<TextField
-												label="Quantity"
-												type="number"
-												size="small"
-												inputProps={{ min: 1, max: li.quantity, step: 1 }}
-												value={entry?.quantity ?? 1}
-												onChange={(e) => onChangeQty(partialDlg.order!.id, li, Number(e.target.value))}
-												sx={{ width: 110 }}
-												disabled={!selected}
-											/>
-											<TextField
-												label="Amount"
-												type="number"
-												size="small"
-												inputProps={{ min: 0, step: '0.01' }}
-												value={entry?.amount ?? defaultAmount}
-												onChange={(e) => onChangeAmount(partialDlg.order!.id, li, e.target.value)}
-												InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }}
-												sx={{ width: 150 }}
-												disabled={!selected}
-											/>
-										</Box>
-								</Box>
-							);
-							})}
-						</Box>
-						{/* Selection preview decision chips */}
-						{selectionPreview[partialDlg.order.id] && selectionPreview[partialDlg.order.id].decision && (
-							<Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-								<Chip size="small" label={`Selection: ${selectionPreview[partialDlg.order.id].decision!.outcome}`} color={chipColorFor(selectionPreview[partialDlg.order.id].decision!)} />
-								{selectionPreview[partialDlg.order.id].decision!.reason && (
-									<Tooltip title={selectionPreview[partialDlg.order.id].decision!.reason} arrow>
-										<Box sx={{
-											fontSize: 12,
-											lineHeight: 1.2,
-											px: 1,
-											py: 0.5,
-											borderRadius: 1,
-											bgcolor: (theme) => {
-												const d = selectionPreview[partialDlg.order!.id].decision!;
-												const msg = (d.reason || '').toLowerCase().trim();
-												if (d.outcome === 'DENY') return theme.palette.warning.light;
-												if (d.outcome === 'REQUIRE_APPROVAL') return theme.palette.warning.light;
-												if (msg === 'allowed by default') return theme.palette.info.light; // message chip blue
-												return theme.palette.success.light;
-											},
-											color: (theme) => {
-												const d = selectionPreview[partialDlg.order!.id].decision!;
-												const msg = (d.reason || '').toLowerCase().trim();
-												if (d.outcome === 'DENY') return theme.palette.text.primary;
-												if (d.outcome === 'REQUIRE_APPROVAL') return theme.palette.text.primary;
-												if (msg === 'allowed by default') return theme.palette.info.contrastText;
-												return theme.palette.success.contrastText;
-											},
-											maxWidth: '100%',
-											whiteSpace: 'normal',
-											wordBreak: 'break-word',
-											overflowWrap: 'anywhere',
-										}}>
-											{selectionPreview[partialDlg.order.id].decision!.reason}
-										</Box>
-									</Tooltip>
-								)}
-							</Box>
-						)}
-						{/* Always-visible note input for partial refunds */}
-						<Box sx={{ mt: 2 }}>
-								<TextField
-									label="Note (optional)"
-									value={confirm.note || ''}
-									onChange={(e) => setConfirm(c => ({ ...c, note: e.target.value }))}
-									multiline
-									minRows={2}
-									fullWidth
-									size="small"
-								/>
-						</Box>
-					</Box>
-				)}
-			</DialogContent>
-			<DialogActions>
-				{partialDlg.order && (
-					<>
-						<Box sx={{ flex: 1 }} />
-						<Button onClick={closePartialDialog}>Cancel</Button>
-						<Button
-							variant="contained"
-							onClick={() => { openConfirmPartial(partialDlg.order!); closePartialDialog(); }}
-							disabled={!partialRefundEnabled(partialDlg.order.id)}
-						>
-							Continue
-						</Button>
-					</>
-				)}
-			</DialogActions>
-		</Dialog>
 
-		{/* Result Dialog (blocking) */}
-		<Dialog open={!!resultDlg?.open} onClose={() => { /* block background dismiss */ }} maxWidth="xs" fullWidth>
-			<DialogTitle>
-				<Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-					{resultDlg?.status === 'success' && <CheckCircleOutlineIcon color="success" />}
-					{resultDlg?.status === 'failure' && <HighlightOffIcon color="error" />}
-					{resultDlg?.status === 'pending' && <InfoOutlinedIcon color="info" />}
-					<Typography variant="subtitle1">
-						{resultDlg?.status === 'success' ? 'Refund successful'
-							: resultDlg?.status === 'failure' ? 'Refund failed'
-							: 'Approval required'}
-					</Typography>
-				</Box>
-			</DialogTitle>
-			<DialogContent>
-				<Typography variant="body2">{resultDlg?.message}</Typography>
-			</DialogContent>
-			<DialogActions>
-				<Button
-					variant="contained"
-					onClick={() => {
-						if (resultDlg?.status === 'success' && lastRefundedOrderId != null) {
-							applyOptimisticRefundUpdate(lastRefundedOrderId);
-							setLastRefundedOrderId(null);
-						}
-						setResultDlg(null);
-					}}
-				>
-					Continue
-				</Button>
-			</DialogActions>
-		</Dialog>
-		</>
+  return (
+    <Page title="Refunds">
+      <Layout>
+        <Layout.Section>
+          <Card padding="0">
+            <Tabs tabs={tabs} selected={tab} onSelect={setTab} fitted />
+            
+            <Box padding="400">
+              {error && <Text as="p" tone="critical">{error}</Text>}
+              
+              <InlineStack gap="300" align="center">
+                <Box minWidth="150px">
+                  <TextField
+                    label="Search by"
+                    labelHidden
+                    value={searchMode}
+                    onChange={(v) => setSearchMode(v as 'phone' | 'orderName')}
+                    autoComplete="off"
+                    // Placeholder support, using simple text selection
+                  />
+                </Box>
+                <div style={{ flex: 1 }}>
+                  <TextField
+                    label="Search query"
+                    labelHidden
+                    placeholder={searchMode === 'phone' ? 'Enter Customer Phone' : 'Enter Order Name (#1234)'}
+                    value={query}
+                    onChange={setQuery}
+                    autoComplete="off"
+                  />
+                </div>
+
+                <Button variant="primary" onClick={() => onSearch({ preventDefault: () => {} } as any)} disabled={loading || !query.trim()}>
+                  {loading ? 'Searching...' : 'Search'}
+                </Button>
+
+              </InlineStack>
+
+              <Box paddingBlockStart="400">
+                {orders && orders.length === 0 && !loading && (
+                   <Text as="p" tone="subdued">No orders found.</Text>
+                )}
+
+                {tab === 0 && orders && orders.length > 0 && (
+                  <IndexTable
+                    resourceName={resourceName}
+                    itemCount={orders.length}
+                    headings={[
+                      { title: '' },
+                      { title: 'Order ID' },
+                      { title: 'Created On' },
+                      { title: 'Customer' },
+                      { title: 'Contact No.' },
+                      { title: 'Amount' },
+                      { title: 'Status' },
+                      { title: 'Reason' },
+                      { title: 'Actions' },
+                    ]}
+                    selectable={false}
+                  >
+                    {rowMarkup}
+                  </IndexTable>
+                )}
+
+                {tab === 1 && orders && orders.length > 0 && (
+                  <IndexTable
+                    resourceName={{ singular: 'cashback', plural: 'cashbacks' }}
+                    itemCount={orders.length}
+                    headings={[
+                      { title: '' },
+                      { title: 'Order ID' },
+                      { title: 'Created On' },
+                      { title: 'Customer' },
+                      { title: 'Contact No.' },
+                      { title: 'Total Cashback' },
+                      { title: 'Total Spent' },
+                      { title: 'Balance Amount' }
+                    ]}
+                    selectable={false}
+                  >
+                    {rowMarkupCashback}
+                  </IndexTable>
+                )}
+
+              </Box>
+            </Box>
+          </Card>
+        </Layout.Section>
+      </Layout>
+
+      {/* Dialogs mapping */}
+      <Modal
+        open={confirm.open}
+        onClose={onConfirmCancel}
+        title="Confirm refund"
+        primaryAction={{
+          content: 'Confirm',
+          onAction: onConfirmProceed,
+          loading: confirmLoading,
+        }}
+        secondaryActions={[{ content: 'Cancel', onAction: onConfirmCancel }]}
+      >
+        <Modal.Section>
+          <Text as="p">Are you sure you want to refund this order?</Text>
+          <Box paddingBlockStart="200">
+            <Text as="p" tone="subdued">Customer: {confirm.customerName}</Text>
+            <Text as="p" tone="subdued">Amount: {confirm.amountLabel}</Text>
+          </Box>
+        </Modal.Section>
+      </Modal>
+
+      <Modal
+         open={partialDlg.open}
+         onClose={closePartialDialog}
+         title={`Partial refund${partialDlg.order ? ` • ${partialDlg.order.name}` : ''}`}
+         primaryAction={{
+           content: 'Continue',
+           onAction: () => { openConfirmPartial(partialDlg.order!); closePartialDialog(); }
+         }}
+         secondaryActions={[{ content: 'Cancel', onAction: closePartialDialog }]}
+      >
+         <Modal.Section>
+           <Text as="p">Select line items to refund:</Text>
+           <Box paddingBlockStart="200">
+             {partialDlg.order?.line_items.map((li) => {
+               const entry = (selections[partialDlg.order!.id] || {})[li.id];
+               const selected = !!entry?.selected;
+               const defaultQty = 1;
+               const defaultAmount = (defaultQty * unitPrice(li)).toFixed(2);
+               return (
+                 <Box key={li.id} padding="200" borderBlockEndWidth="100" borderColor="border">
+                   <InlineStack gap="300" align="space-between" blockAlign="center">
+                     <div style={{ flex: 1 }}>
+                       <Checkbox label={li.name} checked={selected} onChange={(checked) => onToggleLine(partialDlg.order!.id, li, checked)} />
+                       <Text as="p" tone="subdued" variant="bodySm">Available: {li.quantity}</Text>
+                     </div>
+                     <InlineStack gap="200" align="end">
+                       <Box maxWidth="80px">
+                         <TextField
+                           label="Qty"
+                           labelHidden
+                           type="number"
+                           value={String(entry?.quantity ?? 1)}
+                           onChange={(v) => onChangeQty(partialDlg.order!.id, li, Number(v))}
+                           disabled={!selected}
+                           autoComplete="off"
+                         />
+                       </Box>
+                       <Box maxWidth="120px">
+                         <TextField
+                           label="Amount"
+                           labelHidden
+                           type="number"
+                           value={entry?.amount ?? defaultAmount}
+                           onChange={(v) => onChangeAmount(partialDlg.order!.id, li, v)}
+                           disabled={!selected}
+                           autoComplete="off"
+                         />
+                       </Box>
+                     </InlineStack>
+                   </InlineStack>
+                 </Box>
+               );
+             })}
+
+           </Box>
+         </Modal.Section>
+      </Modal>
+    </Page>
+
 	);
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Box, Card, CardContent, CardHeader, TextField, FormControlLabel, Switch, Button, Typography, Alert, Stack, Divider } from '@mui/material';
+import { Box, Card, Text, BlockStack, InlineGrid, InlineStack, Select, TextField, Checkbox, Button, Banner } from '@shopify/polaris';
 import api from '../apiClient';
+
 import { useAuth } from '../auth/AuthContext';
 
 // Lightweight model matching the OpenAPI RefundRulesPayload
@@ -85,101 +86,109 @@ export default function AdminRules() {
   }
 
   return (
-    <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-      <Card sx={{ width: '100%', maxWidth: 900 }}>
-        <CardHeader title="Publish Refund Rules" subheader={isSuperAdmin ? 'Edit and publish a new active ruleset for your tenant' : 'Edit and publish a new active ruleset for the selected tenant'} />
-        <CardContent>
-          {msg && <Alert severity={msg.type} sx={{ mb: 2 }}>{msg.text}</Alert>}
-          <Stack spacing={2} divider={<Divider flexItem />}> 
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField
-                label="Mode (observe | warn | enforce)"
-                value={draft.mode || ''}
-                onChange={(e) => update({ mode: e.target.value as Rules['mode'] })}
-                placeholder="observe"
-                fullWidth
-              />
-              <TextField
-                label="Max Refund Percent"
-                type="number"
-                value={draft.maxRefundPercent ?? ''}
-                onChange={(e) => update({ maxRefundPercent: e.target.value === '' ? undefined : Number(e.target.value) })}
-                placeholder="30"
-                fullWidth
-              />
-              <TextField
-                label="Require Supervisor Above %"
-                type="number"
-                value={draft.requireSupervisorAbovePercent ?? ''}
-                onChange={(e) => update({ requireSupervisorAbovePercent: e.target.value === '' ? undefined : Number(e.target.value) })}
-                placeholder="20"
-                fullWidth
-              />
-            </Stack>
+    <Box>
+      <Box paddingBlockEnd="400">
+        <Text as="h1" variant="headingLg">Set Refund Rules</Text>
+        <Text as="p" tone="subdued">
+          {isSuperAdmin ? 'Edit and publish a new active ruleset for your tenant' : 'Edit and publish a new active ruleset for the selected tenant'}
+        </Text>
+      </Box>
 
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField
-                label="Max Refunds Per Day"
-                type="number"
-                value={draft.maxRefundsPerDay ?? ''}
-                onChange={(e) => update({ maxRefundsPerDay: e.target.value === '' ? undefined : Number(e.target.value) })}
-                placeholder="2"
-                fullWidth
+      <Card>
+        <Box padding="400">
+          <BlockStack gap="500">
+            {msg && (
+              <Banner tone={msg.type === 'error' ? 'critical' : msg.type === 'success' ? 'success' : 'info'}>
+                {msg.text}
+              </Banner>
+            )}
+
+            <InlineGrid columns={{ xs: 1, sm: 3 }} gap="400">
+              <Select
+                label="Mode"
+                options={[
+                  { label: 'Observe', value: 'observe' },
+                  { label: 'Warn', value: 'warn' },
+                  { label: 'Enforce', value: 'enforce' }
+                ]}
+                value={draft.mode || 'observe'}
+                onChange={(v) => update({ mode: v as Rules['mode'] })}
               />
               <TextField
-                label="Refund Window (days)"
+                label="Max Refund %"
                 type="number"
-                value={draft.refundWindowDays ?? ''}
-                onChange={(e) => update({ refundWindowDays: e.target.value === '' ? null : Number(e.target.value) })}
-                placeholder="e.g., 30"
-                fullWidth
+                value={draft.maxRefundPercent != null ? String(draft.maxRefundPercent) : ''}
+                onChange={(v) => update({ maxRefundPercent: v === '' ? undefined : Number(v) })}
+                autoComplete="off"
+              />
+              <TextField
+                label="Need Supervision %"
+                type="number"
+                value={draft.requireSupervisorAbovePercent != null ? String(draft.requireSupervisorAbovePercent) : ''}
+                onChange={(v) => update({ requireSupervisorAbovePercent: v === '' ? undefined : Number(v) })}
+                autoComplete="off"
+              />
+            </InlineGrid>
+
+            <InlineGrid columns={{ xs: 1, sm: 3 }} gap="400">
+              <TextField
+                label="Max Refund per day"
+                type="number"
+                value={draft.maxRefundsPerDay != null ? String(draft.maxRefundsPerDay) : ''}
+                onChange={(v) => update({ maxRefundsPerDay: v === '' ? undefined : Number(v) })}
+                autoComplete="off"
+              />
+              <TextField
+                label="Refund window (days)"
+                type="number"
+                value={draft.refundWindowDays != null ? String(draft.refundWindowDays) : ''}
+                onChange={(v) => update({ refundWindowDays: v === '' ? null : Number(v) })}
+                autoComplete="off"
               />
               <TextField
                 label="Max Lifetime Refund Count"
                 type="number"
-                value={draft.maxLifetimeRefundCount ?? ''}
-                onChange={(e) => update({ maxLifetimeRefundCount: e.target.value === '' ? undefined : Number(e.target.value) })}
-                placeholder="e.g., 3"
-                fullWidth
+                value={draft.maxLifetimeRefundCount != null ? String(draft.maxLifetimeRefundCount) : ''}
+                onChange={(v) => update({ maxLifetimeRefundCount: v === '' ? undefined : Number(v) })}
+                autoComplete="off"
               />
-            </Stack>
+            </InlineGrid>
 
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField
-                label="Allowed Payment Methods (comma or newline separated)"
-                value={allowText}
-                onChange={(e) => setAllowText(e.target.value)}
-                onBlur={() => update({ allowPaymentMethods: parseAllow(allowText) })}
-                placeholder={"e.g.\nCard\nCash on Delivery\nUPI"}
-                helperText="Use commas or new lines to separate values. Spaces within a value are allowed."
-                fullWidth
-                multiline
-                minRows={2}
-              />
-            </Stack>
+            <TextField
+              label="Allowed Payment Methods"
+              value={allowText}
+              onChange={setAllowText}
+              onBlur={() => update({ allowPaymentMethods: parseAllow(allowText) })}
+              multiline={3}
+              helpText="(use comma or new line for seperation)"
+              autoComplete="off"
+            />
 
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <FormControlLabel
-                control={<Switch checked={!!draft.bypassPercentCapForPartials} onChange={(e) => update({ bypassPercentCapForPartials: e.target.checked })} />}
+            <InlineStack gap="500">
+              <Checkbox
                 label="Bypass % Cap for Partials"
+                checked={!!draft.bypassPercentCapForPartials}
+                onChange={(checked) => update({ bypassPercentCapForPartials: checked })}
               />
-              <FormControlLabel
-                control={<Switch checked={!!draft.blockIfAlreadyRefunded} onChange={(e) => update({ blockIfAlreadyRefunded: e.target.checked })} />}
-                label="Block if Already Refunded"
+              <Checkbox
+                label="Block if already refunded"
+                checked={!!draft.blockIfAlreadyRefunded}
+                onChange={(checked) => update({ blockIfAlreadyRefunded: checked })}
               />
-            </Stack>
+            </InlineStack>
 
-            <Box>
-              <Button variant="contained" onClick={publish} disabled={!canPublish}>
-                {publishing ? 'Publishing…' : 'Publish'}
+            <InlineStack align="start" blockAlign="center" gap="300">
+              <Button variant="primary" onClick={publish} loading={publishing} disabled={!canPublish}>
+                Publish
               </Button>
               {!isSuperAdmin && !selectedTenantId && (
-                <Typography variant="caption" sx={{ ml: 2 }} color="text.secondary">Select a tenant to enable publishing</Typography>
+                <Text as="span" variant="bodySm" tone="subdued">Select a tenant to enable publishing</Text>
               )}
-            </Box>
-          </Stack>
-        </CardContent>
+            </InlineStack>
+          </BlockStack>
+        </Box>
       </Card>
     </Box>
   );
 }
+

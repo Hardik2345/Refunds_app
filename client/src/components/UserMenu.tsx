@@ -1,23 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Menu, MenuItem, Divider, Typography } from '@mui/material';
+import { Button, Popover, ActionList, Avatar, Box, Text, InlineStack } from '@shopify/polaris';
 import api, { setTenantHeader } from '../apiClient';
 import { useAuth } from '../auth/AuthContext';
 
 export default function UserMenu() {
   const { user, setUser, setSelectedTenantId } = useAuth();
   const [loading, setLoading] = useState<boolean>(!user);
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const open = useMemo(() => Boolean(anchorEl), [anchorEl]);
+  const [active, setActive] = useState(false);
+
+  const toggleActive = () => setActive((prev) => !prev);
 
   useEffect(() => {
     let mounted = true;
-    // Lazily check session so header reflects auth across routes
     if (!user && window.location.pathname !== '/login') {
       api.get('/users/me').then((res) => {
         if (!mounted) return;
         setUser(res.data?.data?.data || null);
       }).catch(() => {
-        // not logged in
       }).finally(() => {
         if (mounted) setLoading(false);
       });
@@ -31,7 +30,6 @@ export default function UserMenu() {
     try {
       await api.get('/users/logout');
     } catch {
-      // ignore errors on logout
     } finally {
       setUser(null);
       setSelectedTenantId(null);
@@ -45,14 +43,12 @@ export default function UserMenu() {
     try {
       const res = await api.delete('/users/deleteMe');
       if (res.status === 204) {
-        // Treat similar to logout
         setUser(null);
         setSelectedTenantId(null);
         setTenantHeader(null);
         window.location.href = '/login';
       }
     } catch (e) {
-      // best-effort; if the token is invalid we may already be logged out
       setUser(null);
       setSelectedTenantId(null);
       setTenantHeader(null);
@@ -61,14 +57,12 @@ export default function UserMenu() {
   };
 
   if (loading) {
-    return (
-      <Button size="small" variant="text" disabled sx={{ opacity: 0.6 }}>Loading…</Button>
-    );
+    return <Button variant="tertiary" disabled>Loading…</Button>;
   }
 
   if (!user) {
     return (
-      <Button size="small" variant="contained" color="primary" href="/login">
+      <Button variant="primary" url="/login">
         Login
       </Button>
     );
@@ -77,40 +71,46 @@ export default function UserMenu() {
   const displayName = user.name || user.email || 'Account';
   const role = (user as any).role || (Array.isArray((user as any).roles) ? (user as any).roles[0] : null);
 
+  const initials = displayName
+    .split(' ')
+    .map((n: string) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2) || 'U';
+
+  const activator = (
+    <Box onClick={toggleActive}>
+      <InlineStack gap="200" align="center">
+        <Avatar initials={initials} size="md" />
+        <InlineStack gap="100" align="center">
+          <Text as="span" variant="bodyMd" fontWeight="semibold">{displayName}</Text>
+          {role && <Text as="span" variant="bodyXs" tone="subdued">({String(role)})</Text>}
+        </InlineStack>
+      </InlineStack>
+    </Box>
+  );
+
+  const actions = [
+    {
+      content: 'Deactivate account',
+      destructive: true,
+      onAction: handleDeactivate,
+    },
+    {
+      content: 'Logout',
+      onAction: handleLogout,
+    },
+  ];
+
   return (
-    <>
-      <Button
-        size="small"
-        variant="outlined"
-        onClick={(e) => setAnchorEl(e.currentTarget)}
-        aria-haspopup="menu"
-        aria-expanded={open ? 'true' : undefined}
-        sx={{ textTransform: 'none' }}
-      >
-        <Typography variant="body2" sx={{ fontWeight: 600, mr: role ? 0.75 : 0 }}>{displayName}</Typography>
-        {role && (
-          <Typography variant="caption" color="text.secondary">({String(role)})</Typography>
-        )}
-      </Button>
-      <Menu
-        anchorEl={anchorEl}
-        open={open}
-        onClose={() => setAnchorEl(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-      >
-        <MenuItem disabled>
-          <div>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>{displayName}</Typography>
-            {role && <Typography variant="caption" color="text.secondary">Role: {String(role)}</Typography>}
-          </div>
-        </MenuItem>
-        <Divider />
-  {/* Removed Account and Settings entries per requirements */}
-        <MenuItem onClick={handleDeactivate} sx={{ color: 'warning.main' }}>Deactivate account</MenuItem>
-        <Divider />
-        <MenuItem onClick={handleLogout} sx={{ color: 'error.main' }}>Logout</MenuItem>
-      </Menu>
-    </>
+    <Popover
+      active={active}
+      activator={activator}
+      onClose={toggleActive}
+      autofocusTarget="none"
+    >
+      <ActionList items={actions} />
+    </Popover>
   );
 }
+
