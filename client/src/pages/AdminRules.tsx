@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Box, Card, Text, BlockStack, InlineGrid, InlineStack, Select, TextField, Checkbox, Button, Banner } from '@shopify/polaris';
+import { Box, Card, Text, BlockStack, InlineGrid, InlineStack, TextField, Checkbox, Button, Banner } from '@shopify/polaris';
+import { CustomSelect } from '../components/CustomSelect';
 import api from '../apiClient';
 
 import { useAuth } from '../auth/AuthContext';
@@ -104,7 +105,7 @@ export default function AdminRules() {
             )}
 
             <InlineGrid columns={{ xs: 1, sm: 3 }} gap="400">
-              <Select
+              <CustomSelect
                 label="Mode"
                 options={[
                   { label: 'Observe', value: 'observe' },

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Page, Layout, Card, Text, Tabs, TextField, InlineStack, Badge, Button, IndexTable, Modal, Box, Divider, Checkbox, InlineGrid, ButtonGroup, Select } from '@shopify/polaris';
+import { Page, Layout, Card, Text, TextField, InlineStack, Badge, Button, IndexTable, Modal, Box, Checkbox, BlockStack } from '@shopify/polaris';
+import { CustomSelect } from '../components/CustomSelect';
 import { FilterIcon } from '@shopify/polaris-icons';
 import api from '../apiClient';
 
@@ -17,17 +18,13 @@ export default function AgentDashboard() {
 	const [orders, setOrders] = useState<OrderSummary[] | null>(null);
 	const [preview, setPreview] = useState<Record<string, PreviewResult>>({});
 	const [loading, setLoading] = useState(false);
-	const [snack, setSnack] = useState<{ open: boolean; message: string; severity: 'success'|'error'|'info' } | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	// Tabs: 0 = Orders, 1 = Cashback
 	const [tab, setTab] = useState(0);
-	const [cashbackSummary, setCashbackSummary] = useState<{ totalCredits: number | null; totalSpentCredits: number | null } | null>(null);
 	// Partial refund dialog state
 	const [partialDlg, setPartialDlg] = useState<{ open: boolean; order: OrderSummary | null }>({ open: false, order: null });
 	// Selection state per orderId -> per lineItemId -> { selected, quantity, amount }
 	const [selections, setSelections] = useState<Record<number, Record<number, { selected: boolean; quantity: number; amount: string }>>>({});
-	// Optional: a separate preview result for current selection per order
-	const [selectionPreview, setSelectionPreview] = useState<Record<number, PreviewResult>>({});
 	// Confirmation dialog state
 	const [confirm, setConfirm] = useState<{
 		open: boolean;
@@ -39,23 +36,11 @@ export default function AgentDashboard() {
 	}>({ open: false, type: null, orderId: null, amountLabel: '', customerName: '', note: '' });
 	// Confirm action loading state
 	const [confirmLoading, setConfirmLoading] = useState(false);
-	// Result dialog state (blocks until Continue)
-	const [resultDlg, setResultDlg] = useState<{ open: boolean; status: 'success'|'failure'|'pending'; message: string } | null>(null);
-	// Track the last successfully refunded order to apply an optimistic UI update on Continue
-	const [lastRefundedOrderId, setLastRefundedOrderId] = useState<number | null>(null);
 
 	const merged = useMemo(() => {
 		if (!orders) return [] as Array<{ order: OrderSummary; preview?: PreviewResult }>;
 		return orders.map(o => ({ order: o, preview: preview[String(o.id)] }));
 	}, [orders, preview]);
-
-	function badgeToneFor(decision?: RuleDecision | null): 'info' | 'success' | 'warning' | 'critical' | undefined {
-		if (!decision) return undefined;
-		if (decision.outcome === 'DENY') return 'critical';
-		if (decision.outcome === 'REQUIRE_APPROVAL') return 'warning';
-		if (decision.outcome === 'ALLOW') return 'success';
-		return undefined;
-	}
 
 
 
@@ -63,11 +48,9 @@ export default function AgentDashboard() {
 	async function onSearch(e: React.FormEvent) {
 		e.preventDefault();
 		setError(null);
-		setSnack(null);
 		setLoading(true);
 		setOrders(null);
 		setPreview({});
-		setSelectionPreview({});
 		setSelections({});
 		try {
 			const params = searchMode === 'phone' ? { phone: query } : { orderName: query };
@@ -79,18 +62,10 @@ export default function AgentDashboard() {
 				const body = searchMode === 'phone' ? { phone: query, items } : { items };
 				const p = await api.post<{ results: PreviewResult[] }>('/refund/preview/bulk', body);
 					const byId: Record<string, PreviewResult> = {};
-					let summary: { totalCredits: number | null; totalSpentCredits: number | null } | null = null;
 				for (const r of p.data.results) {
 					if (r && r.orderId != null) byId[String(r.orderId)] = r;
-						// Capture global cashback from first result that has it
-						const tc = r?.ctxHints?.totalCredits;
-						const ts = r?.ctxHints?.totalSpentCredits;
-						if (!summary && (tc != null || ts != null)) {
-							summary = { totalCredits: tc ?? null, totalSpentCredits: ts ?? null };
-						}
 				}
 				setPreview(byId);
-					setCashbackSummary(summary);
 			}
 		} catch (err: any) {
 			setError(err?.response?.data?.error || 'Failed to fetch orders');
@@ -99,10 +74,9 @@ export default function AgentDashboard() {
 		}
 	}
 
-	function refundEnabled(r?: PreviewResult) {
-		if (!r || !r.decision) return false;
-		if (r.decision.outcome === 'ALLOW') return true;
-		if (r.decision.outcome === 'REQUIRE_APPROVAL') return r.requiresApproval === false;
+	function refundEnabled(p?: PreviewResult) {
+		if (!p || !p.decision) return true; // fallback
+		if (p.decision.outcome === 'ALLOW' || p.decision.outcome === 'REQUIRE_APPROVAL') return true;
 		return false;
 	}
 
@@ -112,15 +86,14 @@ export default function AgentDashboard() {
 			const payload = { ...payloadBase, note: confirm.note || undefined };
 			const res = await api.post('/refund', payload);
 			if (res.status === 200) {
-				setResultDlg({ open: true, status: 'success', message: 'Refund executed successfully' });
-				setLastRefundedOrderId(orderId);
+				alert('Refund executed successfully');
 			} else if (res.status === 202) {
 				const pendingId = (res as any).data?.pendingId;
-				setResultDlg({ open: true, status: 'pending', message: `Approval required. PendingId: ${pendingId}` });
+				alert(`Approval required. PendingId: ${pendingId}`);
 			}
 		} catch (err: any) {
 			const msg = err?.response?.data?.error || 'Refund failed';
-			setResultDlg({ open: true, status: 'failure', message: msg });
+			alert(msg);
 		}
 	}
 
@@ -192,14 +165,6 @@ export default function AgentDashboard() {
 		return { ...base, orderId, lineItems: items } as const;
 	}
 
-	function partialRefundEnabled(orderId: number) {
-		const r = selectionPreview[orderId];
-		if (!r || !r.decision) return true; // allow submission if not previewed yet
-		if (r.decision.outcome === 'ALLOW') return true;
-		if (r.decision.outcome === 'REQUIRE_APPROVAL') return r.requiresApproval === false;
-		return false;
-	}
-
 	function customerNameFor(order: OrderSummary) {
 		const c = order.customer;
 		if (!c) return 'Unknown customer';
@@ -226,7 +191,7 @@ export default function AgentDashboard() {
 	function openConfirmPartial(order: OrderSummary) {
 		const total = computePartialTotal(order.id);
 		if (!Number.isFinite(total) || total <= 0) {
-			setSnack({ open: true, message: 'Select at least one line item with a valid amount', severity: 'error' });
+			alert('Select at least one line item with a valid amount');
 			return;
 		}
 		const amountLabel = `₹${total.toFixed(2)}`;
@@ -258,83 +223,25 @@ export default function AgentDashboard() {
 		try {
 			const payload = { ...buildPartialPayload(orderId), note: confirm.note || undefined } as any;
 			if (!payload.lineItems.length) {
-				setSnack({ open: true, message: 'Select at least one line item', severity: 'error' });
+				alert('Select at least one line item');
 				return;
 			}
 			const res = await api.post('/refund', payload);
 			if (res.status === 200) {
-				setResultDlg({ open: true, status: 'success', message: 'Partial refund executed successfully' });
-				setLastRefundedOrderId(orderId);
+				alert('Partial refund executed successfully');
 			} else if (res.status === 202) {
 				const pendingId = (res as any).data?.pendingId;
-				setResultDlg({ open: true, status: 'pending', message: `Approval required. PendingId: ${pendingId}` });
+				alert(`Approval required. PendingId: ${pendingId}`);
 			}
 		} catch (err: any) {
 			const msg = err?.response?.data?.error || 'Partial refund failed';
-			setResultDlg({ open: true, status: 'failure', message: msg });
+			alert(msg);
 		}
 	}
 
-	function applyOptimisticRefundUpdate(orderId: number) {
-		setPreview(prev => {
-			const key = String(orderId);
-			const existing = prev[key];
-			const updatedDecision: RuleDecision = {
-				outcome: 'DENY',
-				reason: 'Refund executed',
-				matched: existing?.decision?.matched,
-				rulesVersion: existing?.decision?.rulesVersion,
-				ruleSetId: existing?.decision?.ruleSetId,
-			};
-			const updated: PreviewResult = existing
-				? { ...existing, decision: updatedDecision, requiresApproval: false }
-				: { orderId, decision: updatedDecision, requiresApproval: false, ctxHints: null } as PreviewResult;
-			return { ...prev, [key]: updated };
-		});
-		// Clear any selection state for this order in case of partial flow
-		setSelections(prev => ({ ...prev, [orderId]: {} }));
-		setSelectionPreview(prev => ({ ...prev, [orderId]: {} as any }));
-	}
-
-  const tabs = [
-    { id: 'orders-0', content: 'Orders', accessibilityLabel: 'Orders' },
-    { id: 'cashback-1', content: 'Cashback', accessibilityLabel: 'Cashback' }
-  ];
+    // Function removed as it was unused
 
   const resourceName = { singular: 'order', plural: 'orders' };
-
-  const rowMarkup = merged.map(({ order, preview: p }, index) => {
-    const customer = order.customer ? `${order.customer.first_name} ${order.customer.last_name}` : 'Unknown';
-    const phone = order.customer?.phone || 'N/A';
-    const createdStr = new Date(order.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' });
-    const amount = order.current_subtotal_price ? `₹${parseFloat(order.current_subtotal_price).toLocaleString()}` : 'N/A';
-    const statusOutcome = p?.decision?.outcome || 'Pending';
-    const reason = p?.decision?.reason || 'Loading hints...';
-
-    return (
-      <IndexTable.Row id={order.id.toString()} key={order.id} position={index}>
-        <IndexTable.Cell><Checkbox label="" checked={false} onChange={() => {}} /></IndexTable.Cell>
-        <IndexTable.Cell><Text as="span" fontWeight="semibold">{order.name}</Text></IndexTable.Cell>
-        <IndexTable.Cell>{createdStr}</IndexTable.Cell>
-        <IndexTable.Cell>{customer}</IndexTable.Cell>
-        <IndexTable.Cell>{phone}</IndexTable.Cell>
-        <IndexTable.Cell>{amount}</IndexTable.Cell>
-
-        <IndexTable.Cell>
-          <Badge tone={badgeToneFor(p?.decision)}>{statusOutcome}</Badge>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <Text as="span" tone="subdued" variant="bodySm">{reason}</Text>
-        </IndexTable.Cell>
-        <IndexTable.Cell>
-          <ButtonGroup>
-            <Button size="slim" onClick={() => openConfirmFull(order)} disabled={!refundEnabled(p)}>Process Refund</Button>
-            <Button size="slim" variant="secondary" onClick={() => openPartialDialog(order)}>Partial Refund</Button>
-          </ButtonGroup>
-        </IndexTable.Cell>
-      </IndexTable.Row>
-    );
-  });
 
   const rowMarkupCashback = merged.map(({ order, preview: p }, index) => {
     const customer = order.customer ? `${order.customer.first_name} ${order.customer.last_name}` : 'Unknown';
@@ -366,40 +273,77 @@ export default function AgentDashboard() {
       <Layout>
         <Layout.Section>
           <Card padding="0">
-            <Tabs tabs={tabs} selected={tab} onSelect={setTab} fitted />
+            {/* Custom Pill-style Tabs */}
+            <Box padding="400" borderBlockEndWidth="100" borderColor="border">
+              <InlineStack gap="400">
+                <button
+                  onClick={() => setTab(0)}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: tab === 0 ? 'var(--p-color-bg-surface-secondary)' : 'transparent',
+                    color: 'var(--p-color-text)',
+                    fontWeight: tab === 0 ? 'bold' : 'normal',
+                    cursor: 'pointer',
+                    fontSize: '14px'
+                  }}
+                >
+                  Orders
+                </button>
+                <button
+                  onClick={() => setTab(1)}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: tab === 1 ? 'var(--p-color-bg-surface-secondary)' : 'transparent',
+                    color: 'var(--p-color-text)',
+                    fontWeight: tab === 1 ? 'bold' : 'normal',
+                    cursor: 'pointer',
+                    fontSize: '14px'
+                  }}
+                >
+                  Cashback
+                </button>
+              </InlineStack>
+            </Box>
             
             <Box padding="400">
-              {error && <Text as="p" tone="critical">{error}</Text>}
+              {error && <Box paddingBlockEnd="400"><Text as="p" tone="critical">{error}</Text></Box>}
               
               <InlineStack gap="300" blockAlign="center" wrap={false}>
                 <div style={{ flex: 1 }}>
-                  <TextField
-                    label="Search query"
-                    labelHidden
-                    placeholder={searchMode === 'phone' ? 'Enter customer contact number to load recent orders and preview refund eligibility' : 'Enter Order Name (#1234)'}
-                    value={query}
-                    onChange={setQuery}
-                    autoComplete="off"
-                    clearButton
-                    onClearButtonClick={() => setQuery('')}
-                    connectedLeft={
-                      <Select
-                        label="Search type"
-                        labelHidden
+                  <InlineStack gap="200" wrap={false} blockAlign="center">
+                    <div style={{ width: '200px' }}>
+                      <CustomSelect
                         options={[
                           {label: 'Contact Number', value: 'phone'},
                           {label: 'Order ID', value: 'orderName'}
                         ]}
                         value={searchMode}
                         onChange={(v) => setSearchMode(v as 'phone'|'orderName')}
+                        fullWidth={true}
                       />
-                    }
-                  />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <TextField
+                        label="Search for Customer Details"
+                        labelHidden
+                        placeholder="Search Orders... (Phone, Order ID)"
+                        autoComplete="off"
+                        value={query}
+                        onChange={setQuery}
+                        clearButton
+                        onClearButtonClick={() => setQuery('')}
+                      />
+                    </div>
+                  </InlineStack>
                 </div>
                 <Button onClick={() => onSearch({ preventDefault: () => {} } as any)} disabled={loading || !query.trim()}>
                   {loading ? 'Searching...' : 'Search'}
                 </Button>
-                <Button icon={FilterIcon} onClick={() => {}} disabled />
+                <Button icon={FilterIcon} onClick={() => {}} />
               </InlineStack>
 
               <Box paddingBlockStart="400">
@@ -408,44 +352,109 @@ export default function AgentDashboard() {
                 )}
 
                 {tab === 0 && orders && orders.length > 0 && (
-                  <IndexTable
-                    resourceName={resourceName}
-                    itemCount={orders.length}
-                    headings={[
-                      { title: '' },
-                      { title: 'Order ID' },
-                      { title: 'Created On' },
-                      { title: 'Customer' },
-                      { title: 'Contact No.' },
-                      { title: 'Amount' },
-                      { title: 'Status' },
-                      { title: 'Reason' },
-                      { title: 'Actions' },
-                    ]}
-                    selectable={false}
-                  >
-                    {rowMarkup}
-                  </IndexTable>
+                  <div className="custom-table-header">
+                    <style>{`
+                      .custom-table-header .Polaris-IndexTable-IndexTableHead {
+                        background-color: var(--p-color-bg-surface-secondary);
+                      }
+                      .custom-table-header .Polaris-IndexTable__HeaderCell {
+                        background-color: transparent !important;
+                        border-bottom: 1px solid var(--p-color-border-subdued);
+                      }
+                    `}</style>
+                    <IndexTable
+                      resourceName={resourceName}
+                      itemCount={orders.length}
+                      headings={[
+                        { title: '' },
+                        { title: 'Order ID' },
+                        { title: 'Created On' },
+                        { title: 'Customer' },
+                        { title: 'Contact No.' },
+                        { title: 'Refund Amount' },
+                        { title: 'Refund Status' },
+                        { title: 'Reason' },
+                        { title: '' },
+                      ]}
+                      selectable={false}
+                    >
+                      {merged.map(({ order, preview: p }, index) => {
+                        const customer = order.customer ? `${order.customer.first_name}` : 'Unknown';
+                        const phone = order.customer?.phone || 'N/A';
+                        
+                        const dateObj = new Date(order.created_at);
+                        const dateStr = dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' });
+                        const timeStr = dateObj.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+                        
+                        const amount = order.current_subtotal_price ? `₹${parseFloat(order.current_subtotal_price).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : 'N/A';
+                        const statusOutcome = p?.decision?.outcome || 'Pending';
+                        const reason = p?.decision?.reason || 'Loading hints...';
+                        
+                        // Mapping target mockup status badges
+                        let badges = [];
+                        if (statusOutcome === 'DENY') {
+                          badges.push(<Badge tone="critical">Rejected</Badge>);
+                          badges.push(<Badge tone="warning">Unfulfilled</Badge>);
+                        } else if (statusOutcome === 'ALLOW') {
+                          badges.push(<Badge tone="success">Processed</Badge>);
+                        } else if (statusOutcome === 'REQUIRE_APPROVAL') {
+                           badges.push(<Badge tone="info">Fullfillable</Badge>);
+                        }
+
+                        return (
+                          <IndexTable.Row id={order.id.toString()} key={order.id} position={index}>
+                            <IndexTable.Cell><Checkbox label="" checked={false} onChange={() => {}} /></IndexTable.Cell>
+                            <IndexTable.Cell><Text as="span" fontWeight="bold">#{order.name}</Text></IndexTable.Cell>
+                            <IndexTable.Cell>
+                              <BlockStack gap="050">
+                                <Text as="span" variant="bodySm">{dateStr}</Text>
+                                <Text as="span" variant="bodySm" tone="subdued">{timeStr}</Text>
+                              </BlockStack>
+                            </IndexTable.Cell>
+                            <IndexTable.Cell>{customer}</IndexTable.Cell>
+                            <IndexTable.Cell>{phone}</IndexTable.Cell>
+                            <IndexTable.Cell><Text as="span" fontWeight="semibold">{amount}</Text></IndexTable.Cell>
+                            <IndexTable.Cell>
+                              <InlineStack gap="100">{badges}</InlineStack>
+                            </IndexTable.Cell>
+                            <IndexTable.Cell>
+                              <Box maxWidth="200px">
+                                <Text as="span" tone="subdued" variant="bodySm">{reason}</Text>
+                              </Box>
+                            </IndexTable.Cell>
+                            <IndexTable.Cell>
+                              <InlineStack gap="200" align="end">
+                                <Button size="slim" onClick={() => openConfirmFull(order)} disabled={!refundEnabled(p)}>Process Refund</Button>
+                                <Button size="slim" variant="secondary" onClick={() => openPartialDialog(order)}>Partial Refund</Button>
+                              </InlineStack>
+                            </IndexTable.Cell>
+                          </IndexTable.Row>
+                        );
+                      })}
+                    </IndexTable>
+                  </div>
                 )}
 
                 {tab === 1 && orders && orders.length > 0 && (
-                  <IndexTable
-                    resourceName={{ singular: 'cashback', plural: 'cashbacks' }}
-                    itemCount={orders.length}
-                    headings={[
-                      { title: '' },
-                      { title: 'Order ID' },
-                      { title: 'Created On' },
-                      { title: 'Customer' },
-                      { title: 'Contact No.' },
-                      { title: 'Total Cashback' },
-                      { title: 'Total Spent' },
-                      { title: 'Balance Amount' }
-                    ]}
-                    selectable={false}
-                  >
-                    {rowMarkupCashback}
-                  </IndexTable>
+                   <div className="custom-table-header">
+                    <IndexTable
+                      resourceName={{ singular: 'cashback', plural: 'cashbacks' }}
+                      itemCount={orders.length}
+                      headings={[
+                        { title: '' },
+                        { title: 'Order ID' },
+                        { title: 'Created On' },
+                        { title: 'Customer' },
+                        { title: 'Contact No.' },
+                        { title: 'Total Cashback' },
+                        { title: 'Total Spent' },
+                        { title: 'Balance Amount' }
+                      ]}
+                      selectable={false}
+                    >
+                      {rowMarkupCashback}
+                    </IndexTable>
+                  </div>
                 )}
 
               </Box>

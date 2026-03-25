@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Box, Card, Text, BlockStack, InlineGrid, InlineStack, Select, TextField, Button, Banner, IndexTable, Badge, Avatar, ButtonGroup, Icon } from '@shopify/polaris';
+import { Box, Card, Text, BlockStack, InlineGrid, InlineStack, TextField, Button, Banner, IndexTable, Badge, ButtonGroup, Icon } from '@shopify/polaris';
+import { CustomSelect } from '../components/CustomSelect';
 import { EditIcon, DeleteIcon, PersonIcon } from '@shopify/polaris-icons';
 import api from '../apiClient';
 import { useAuth } from '../auth/AuthContext';
@@ -12,7 +13,6 @@ export default function AdminUsers() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [rowBusyId, setRowBusyId] = useState<string | null>(null);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loadingTenants, setLoadingTenants] = useState<boolean>(false);
   const [audits, setAudits] = useState<any[]>([]);
@@ -136,7 +136,7 @@ export default function AdminUsers() {
                   <TextField label="Email *" type="email" value={email} onChange={setEmail} autoComplete="off" />
                   <TextField label="Phone" value={phone} onChange={setPhone} autoComplete="off" />
                   
-                  <Select
+                  <CustomSelect
                     label="Role *"
                     options={roleOptions}
                     value={role}
@@ -144,7 +144,7 @@ export default function AdminUsers() {
                   />
 
                   {role !== 'platform_admin' && roleOfCurrent !== 'super_admin' && (
-                    <Select
+                    <CustomSelect
                       label="Shop *"
                       options={[{ label: 'Select shop assigned to user', value: '' }, ...tenantOptions]}
                       value={storeId}
@@ -192,7 +192,7 @@ export default function AdminUsers() {
                         <InlineStack gap="300" blockAlign="center">
                           <div style={{ width: 44, height: 44, borderRadius: '50%', backgroundColor: '#5c5f62', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                             <div style={{ width: 24, height: 24, fill: '#ffffff' }}>
-                              <Icon source={PersonIcon} tone="textInverse" />
+                              <Icon source={PersonIcon} tone="base" />
                             </div>
                           </div>
                           <div>
@@ -215,7 +215,7 @@ export default function AdminUsers() {
                         <InlineStack align="end" gap="200" blockAlign="center">
                           <ButtonGroup>
                             <Button icon={EditIcon} variant="tertiary" onClick={() => {}} disabled />
-                            <Button icon={DeleteIcon} variant="tertiary" onClick={() => onDeleteUser(id, display)} disabled={isSelf || !canManage} />
+                             <Button icon={DeleteIcon} variant="tertiary" onClick={() => onDeleteUser(id, display)} disabled={isSelf || !canManage} loading={deletingId === id} />
                           </ButtonGroup>
                         </InlineStack>
                       </InlineGrid>
@@ -233,18 +233,19 @@ export default function AdminUsers() {
               <Text as="p" tone="subdued">Page {auditPage} of {Math.max(1, Math.ceil(auditTotal / auditLimit))}</Text>
             </Box>
 
-            <IndexTable
-              resourceName={{ singular: 'audit', plural: 'audits' }}
-              itemCount={audits.length}
-              headings={[
-                { title: 'User' },
-                { title: 'Action' },
-                { title: 'Shop' },
-                { title: 'Date' },
-                { title: 'Info' }
-              ]}
-              selectable={false}
-            >
+             <IndexTable
+               resourceName={{ singular: 'audit', plural: 'audits' }}
+               itemCount={audits.length}
+               headings={[
+                 { title: 'User' },
+                 { title: 'Action' },
+                 { title: 'Shop' },
+                 { title: 'Date' },
+                 { title: 'Info' }
+               ]}
+               selectable={false}
+               loading={loadingAudits}
+             >
               {audits.map((a: any, idx: number) => (
                 <IndexTable.Row id={a._id} key={a._id} position={idx}>
                   <IndexTable.Cell>

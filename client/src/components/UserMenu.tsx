@@ -1,5 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Button, Popover, ActionList, Avatar, Box, Text, InlineStack } from '@shopify/polaris';
+import { useEffect, useState } from 'react';
+import { Button, Popover, ActionList, Text, InlineStack, Icon } from '@shopify/polaris';
+import { 
+  PersonFilledIcon, 
+  ShieldCheckMarkIcon, 
+  PersonIcon, 
+  ProfileIcon,
+  SearchIcon
+} from '@shopify/polaris-icons';
 import api, { setTenantHeader } from '../apiClient';
 import { useAuth } from '../auth/AuthContext';
 
@@ -68,26 +75,37 @@ export default function UserMenu() {
     );
   }
 
-  const displayName = user.name || user.email || 'Account';
-  const role = (user as any).role || (Array.isArray((user as any).roles) ? (user as any).roles[0] : null);
+  const roleKey = (user as any).role || (Array.isArray((user as any).roles) ? (user as any).roles[0] : null);
+  
+  // Mapping roles to Names and Icons
+  const roleConfig: Record<string, { label: string; icon: any; color: string }> = {
+    platform_admin: { label: 'Platform Admin', icon: ShieldCheckMarkIcon, color: '#9c6ade' },
+    super_admin: { label: 'Super Admin', icon: PersonFilledIcon, color: '#008060' },
+    user_admin: { label: 'User Admin', icon: PersonIcon, color: '#458fff' },
+    agent: { label: 'Agent', icon: ProfileIcon, color: '#6d7175' }
+  };
 
-  const initials = displayName
-    .split(' ')
-    .map((n: string) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2) || 'U';
+  const currentRole = roleConfig[roleKey] || { label: roleKey || 'User', icon: SearchIcon, color: '#6d7175' };
 
   const activator = (
-    <Box onClick={toggleActive}>
-      <InlineStack gap="200" align="center">
-        <Avatar initials={initials} size="md" />
-        <InlineStack gap="100" align="center">
-          <Text as="span" variant="bodyMd" fontWeight="semibold">{displayName}</Text>
-          {role && <Text as="span" variant="bodyXs" tone="subdued">({String(role)})</Text>}
-        </InlineStack>
+    <div onClick={toggleActive} style={{ cursor: 'pointer' }}>
+      <InlineStack gap="200" align="center" blockAlign="center">
+        <div style={{ 
+          backgroundColor: currentRole.color, 
+          padding: '6px', 
+          borderRadius: '8px', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          color: 'white'
+        }}>
+          <Icon source={currentRole.icon} tone="inherit" />
+        </div>
+        <Text as="span" variant="bodyMd" fontWeight="semibold">
+          {currentRole.label}
+        </Text>
       </InlineStack>
-    </Box>
+    </div>
   );
 
   const actions = [

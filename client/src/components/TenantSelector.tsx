@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Select, Box, Text } from '@shopify/polaris';
+import { Box, Text, InlineStack } from '@shopify/polaris';
+import { CustomSelect } from './CustomSelect';
 import api, { setTenantHeader } from '../apiClient';
 import { useAuth } from '../auth/AuthContext';
 
@@ -50,16 +51,19 @@ export default function TenantSelector() {
   ];
 
   return (
-    <Box minWidth="200px">
-      <Select
-        label={
-          <Text as="span" variant="bodyXs" tone="subdued">Shop</Text>
-        }
-        options={options}
-        onChange={(value) => setSelectedTenantId(value === 'ALL' ? null : value)}
-        value={selectedTenantId || ''}
-        disabled={loading}
-      />
+    <Box minWidth="240px">
+      <InlineStack gap="200" align="start" blockAlign="center" wrap={false}>
+        <Text as="span" variant="bodyMd" fontWeight="semibold" tone="subdued">Shop</Text>
+        <div style={{ flex: 1 }}>
+          <CustomSelect
+            options={options}
+            onChange={(value) => setSelectedTenantId(value === 'ALL' ? null : value)}
+            value={selectedTenantId || 'ALL'}
+            disabled={loading}
+            placeholder="Select Shop"
+          />
+        </div>
+      </InlineStack>
     </Box>
   );
 }

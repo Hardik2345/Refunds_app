@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Box, Card, Text, BlockStack, InlineStack, Select, TextField, Button, Banner, IndexTable, Pagination, Icon } from '@shopify/polaris';
+import { Box, Card, Text, BlockStack, InlineStack, TextField, Button, Banner, IndexTable, Pagination, Icon } from '@shopify/polaris';
+import { CustomSelect } from '../components/CustomSelect';
 import { SearchIcon, FilterIcon } from '@shopify/polaris-icons';
 import api from '../apiClient';
 import { useAuth } from '../auth/AuthContext';
@@ -144,30 +145,24 @@ export default function AdminActivity() {
                     onClearButtonClick={() => setPhone('')}
                   />
                 </Box>
-                <Box minWidth="120px">
-                  <Select
-                    label="Select Date"
-                    labelHidden
+                <Box minWidth="150px">
+                  <CustomSelect
                     options={[{ label: 'Select Date', value: '' }]}
                     value={day}
                     onChange={setDay}
                     disabled
                   />
                 </Box>
-                <Box minWidth="120px">
-                  <Select
-                    label="Select Shop"
-                    labelHidden
+                <Box minWidth="150px">
+                  <CustomSelect
                     options={[{ label: 'Select Shop', value: '' }]}
                     value={shop}
                     onChange={setShop}
                     disabled
                   />
                 </Box>
-                <Box minWidth="120px">
-                  <Select
-                    label="Agent"
-                    labelHidden
+                <Box minWidth="150px">
+                  <CustomSelect
                     options={[{ label: 'Agent', value: '' }]}
                     value={agent}
                     onChange={setAgent}
