@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Box, Card, CardHeader, CardContent, TextField, Button, Alert, CircularProgress, Grid, Typography } from '@mui/material';
+import { Box, Card, Text, BlockStack, InlineGrid, InlineStack, TextField, Button, Banner } from '@shopify/polaris';
 import api from '../apiClient';
 import { useAuth } from '../auth/AuthContext';
 
@@ -13,10 +13,12 @@ export default function AdminMaintenance() {
   const [phone, setPhone] = useState<string>('');
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [loadingRefund, setLoadingRefund] = useState(false);
-  const [msg, setMsg] = useState<{ type: 'success'|'error', text: string }|null>(null);
+  const [msg, setMsg] = useState<{ type: 'success'|'error'|'warning', text: string }|null>(null);
 
   useEffect(() => {
-    if (!isPlatformAdmin) setMsg({ type: 'error', text: 'Only platform admins can access maintenance tools.' });
+    if (!isPlatformAdmin) {
+      setMsg({ type: 'warning', text: 'Only platform admins can access maintenance tools.' });
+    }
   }, [isPlatformAdmin]);
 
   const commonParams = useMemo(() => {
@@ -63,45 +65,75 @@ export default function AdminMaintenance() {
 
   return (
     <Box>
-      <Card sx={{ mb: 2 }}>
-        <CardHeader title="Maintenance" subheader="Delete audit and refund logs (platform admin only)" />
-        <CardContent>
-          {msg && <Alert severity={msg.type} sx={{ mb: 2 }}>{msg.text}</Alert>}
-          <Grid container spacing={2} alignItems="stretch">
-            <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
-              <Card variant="outlined" sx={{ flex: 1, height: '100%' }}>
-                <CardHeader title="User Audit Logs" subheader="Delete by tenant (header) and/or date range" />
-                <CardContent>
-                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                    <TextField label="From" type="date" size="small" value={from} onChange={(e)=>setFrom(e.target.value)} InputLabelProps={{ shrink: true }} />
-                    <TextField label="To" type="date" size="small" value={to} onChange={(e)=>setTo(e.target.value)} InputLabelProps={{ shrink: true }} />
-                    <Button variant="outlined" color="error" disabled={!isPlatformAdmin || loadingAudit} onClick={() => confirmAnd(deleteAudits, 'user audit logs')}>
-                      {loadingAudit ? <CircularProgress size={18} /> : 'Delete Logs'}
-                    </Button>
-                  </Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>To delete across all tenants, select "All tenants" in the header.</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
-              <Card variant="outlined" sx={{ flex: 1, height: '100%' }}>
-                <CardHeader title="Refund Logs" subheader="Delete by tenant (header), date range, and/or customer mobile" />
-                <CardContent>
-                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                    <TextField label="From" type="date" size="small" value={from} onChange={(e)=>setFrom(e.target.value)} InputLabelProps={{ shrink: true }} />
-                    <TextField label="To" type="date" size="small" value={to} onChange={(e)=>setTo(e.target.value)} InputLabelProps={{ shrink: true }} />
-                    <TextField label="Customer mobile" placeholder="e.g. 9876543210 or +91..." size="small" value={phone} onChange={(e)=>setPhone(e.target.value)} />
-                    <Button variant="outlined" color="error" disabled={!isPlatformAdmin || loadingRefund} onClick={() => confirmAnd(deleteRefunds, 'refund logs')}>
-                      {loadingRefund ? <CircularProgress size={18} /> : 'Delete Logs'}
-                    </Button>
-                  </Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>Phone supports +91 and leading zeros. Leave phone blank to delete by date only.</Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        </CardContent>
-      </Card>
+      <Box paddingBlockEnd="400">
+        <BlockStack gap="200">
+          <Text as="h1" variant="headingLg">Maintenance</Text>
+          <Text as="p" tone="subdued">Delete audit and refund logs (platform admin only)</Text>
+        </BlockStack>
+      </Box>
+
+      {msg && (
+        <Box paddingBlockEnd="400">
+          <Banner tone={msg.type === 'error' ? 'critical' : msg.type === 'warning' ? 'warning' : 'success'} onDismiss={() => setMsg(null)}>
+            {msg.text}
+          </Banner>
+        </Box>
+      )}
+
+      <InlineGrid columns={{ xs: 1, md: 2 }} gap="400" alignItems="start">
+        <Card>
+          <BlockStack gap="400">
+            <BlockStack gap="200">
+              <Text as="h3" variant="headingMd">User Audit Logs</Text>
+              <Text as="p" tone="subdued">Delete by tenant (header) and/or date range</Text>
+            </BlockStack>
+            
+            <InlineStack gap="300" blockAlign="end" wrap>
+              <Box minWidth="140px">
+                <TextField label="From" type="date" value={from} onChange={setFrom} autoComplete="off" />
+              </Box>
+              <Box minWidth="140px">
+                <TextField label="To" type="date" value={to} onChange={setTo} autoComplete="off" />
+              </Box>
+              <Button tone="critical" disabled={!isPlatformAdmin || loadingAudit} loading={loadingAudit} onClick={() => confirmAnd(deleteAudits, 'user audit logs')}>
+                Delete Logs
+              </Button>
+            </InlineStack>
+
+            <Text as="p" variant="bodySm" tone="subdued">
+              To delete across all tenants, select "All tenants" in the header.
+            </Text>
+          </BlockStack>
+        </Card>
+
+        <Card>
+          <BlockStack gap="400">
+            <BlockStack gap="200">
+              <Text as="h3" variant="headingMd">Refund Logs</Text>
+              <Text as="p" tone="subdued">Delete by tenant (header), date range, and/or customer mobile</Text>
+            </BlockStack>
+            
+            <InlineStack gap="300" blockAlign="end" wrap>
+              <Box minWidth="140px">
+                <TextField label="From" type="date" value={from} onChange={setFrom} autoComplete="off" />
+              </Box>
+              <Box minWidth="140px">
+                <TextField label="To" type="date" value={to} onChange={setTo} autoComplete="off" />
+              </Box>
+              <Box minWidth="140px">
+                <TextField label="Customer mobile" placeholder="e.g. 9876543210..." value={phone} onChange={setPhone} autoComplete="off" />
+              </Box>
+              <Button tone="critical" disabled={!isPlatformAdmin || loadingRefund} loading={loadingRefund} onClick={() => confirmAnd(deleteRefunds, 'refund logs')}>
+                Delete Logs
+              </Button>
+            </InlineStack>
+
+            <Text as="p" variant="bodySm" tone="subdued">
+              Phone supports +91 and leading zeros. Leave phone blank to delete by date only.
+            </Text>
+          </BlockStack>
+        </Card>
+      </InlineGrid>
     </Box>
   );
 }

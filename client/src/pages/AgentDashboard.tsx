@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Page, Layout, Card, Text, Tabs, TextField, InlineStack, Badge, Button, IndexTable, Modal, Box, Divider, Checkbox, InlineGrid, ButtonGroup } from '@shopify/polaris';
+import { Page, Layout, Card, Text, Tabs, TextField, InlineStack, Badge, Button, IndexTable, Modal, Box, Divider, Checkbox, InlineGrid, ButtonGroup, Select } from '@shopify/polaris';
+import { FilterIcon } from '@shopify/polaris-icons';
 import api from '../apiClient';
 
 
@@ -361,7 +362,7 @@ export default function AgentDashboard() {
 
 
   return (
-    <Page title="Refunds">
+    <Page title="Refunds" fullWidth>
       <Layout>
         <Layout.Section>
           <Card padding="0">
@@ -370,32 +371,35 @@ export default function AgentDashboard() {
             <Box padding="400">
               {error && <Text as="p" tone="critical">{error}</Text>}
               
-              <InlineStack gap="300" align="center">
-                <Box minWidth="150px">
-                  <TextField
-                    label="Search by"
-                    labelHidden
-                    value={searchMode}
-                    onChange={(v) => setSearchMode(v as 'phone' | 'orderName')}
-                    autoComplete="off"
-                    // Placeholder support, using simple text selection
-                  />
-                </Box>
+              <InlineStack gap="300" blockAlign="center" wrap={false}>
                 <div style={{ flex: 1 }}>
                   <TextField
                     label="Search query"
                     labelHidden
-                    placeholder={searchMode === 'phone' ? 'Enter Customer Phone' : 'Enter Order Name (#1234)'}
+                    placeholder={searchMode === 'phone' ? 'Enter customer contact number to load recent orders and preview refund eligibility' : 'Enter Order Name (#1234)'}
                     value={query}
                     onChange={setQuery}
                     autoComplete="off"
+                    clearButton
+                    onClearButtonClick={() => setQuery('')}
+                    connectedLeft={
+                      <Select
+                        label="Search type"
+                        labelHidden
+                        options={[
+                          {label: 'Contact Number', value: 'phone'},
+                          {label: 'Order ID', value: 'orderName'}
+                        ]}
+                        value={searchMode}
+                        onChange={(v) => setSearchMode(v as 'phone'|'orderName')}
+                      />
+                    }
                   />
                 </div>
-
-                <Button variant="primary" onClick={() => onSearch({ preventDefault: () => {} } as any)} disabled={loading || !query.trim()}>
+                <Button onClick={() => onSearch({ preventDefault: () => {} } as any)} disabled={loading || !query.trim()}>
                   {loading ? 'Searching...' : 'Search'}
                 </Button>
-
+                <Button icon={FilterIcon} onClick={() => {}} disabled />
               </InlineStack>
 
               <Box paddingBlockStart="400">

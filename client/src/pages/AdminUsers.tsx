@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Box, Card, CardContent, CardHeader, TextField, MenuItem, Button, Alert, Stack, FormHelperText, FormControl, InputLabel, Select, Typography, Paper, Table, TableHead, TableRow, TableCell, TableBody, CircularProgress, Chip, Grid, Pagination, Tabs, Tab } from '@mui/material';
+import { Box, Card, Text, BlockStack, InlineGrid, InlineStack, Select, TextField, Button, Banner, IndexTable, Badge, Avatar, ButtonGroup, Icon } from '@shopify/polaris';
+import { EditIcon, DeleteIcon, PersonIcon } from '@shopify/polaris-icons';
 import api from '../apiClient';
 import { useAuth } from '../auth/AuthContext';
 
 type Role = 'refund_agent' | 'platform_admin' | 'super_admin' | 'user_admin';
-
 type Tenant = { _id: string; name: string; shopDomain?: string };
 
 export default function AdminUsers() {
@@ -30,6 +30,7 @@ export default function AdminUsers() {
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  
   const roleOfCurrent = String((user as any)?.role || '').toLowerCase();
   const canManage = user && (user as any).role && ['platform_admin', 'super_admin', 'user_admin'].includes(roleOfCurrent);
   const isSuperAdmin = roleOfCurrent === 'super_admin';
@@ -40,13 +41,8 @@ export default function AdminUsers() {
     try {
       setLoading(true);
       const res = await api.get('/users', { params: { fields: 'name,email,role,storeId,isActive', status: tab } });
-      const data = res.data?.data?.data || [];
-      setUsers(data);
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
+      setUsers(res.data?.data?.data || []);
+    } catch { /* ignore */ } finally { setLoading(false); }
   };
 
   const loadTenants = async () => {
@@ -54,11 +50,7 @@ export default function AdminUsers() {
       setLoadingTenants(true);
       const res = await api.get('/tenants', { params: { limit: 200, fields: 'name,shopDomain' } });
       setTenants(res.data?.data?.data || []);
-    } catch {
-      setTenants([]);
-    } finally {
-      setLoadingTenants(false);
-    }
+    } catch { setTenants([]); } finally { setLoadingTenants(false); }
   };
 
   const loadAudits = async (page?: number) => {
@@ -68,370 +60,211 @@ export default function AdminUsers() {
       const p = page ?? auditPage;
       const res = await api.get('/user-audits', { params: { page: p, limit: auditLimit, sort: '-createdAt' } });
       setAudits(res.data?.data?.data || []);
-      const total = Number(res.data?.total ?? 0);
-      setAuditTotal(Number.isFinite(total) ? total : 0);
+      setAuditTotal(Number(res.data?.total ?? 0));
       setAuditPage(Number(res.data?.page ?? p) || 1);
-    } catch {
-      setAudits([]);
-      setAuditTotal(0);
-    } finally {
-      setLoadingAudits(false);
-    }
+    } catch { setAudits([]); setAuditTotal(0); } finally { setLoadingAudits(false); }
   };
 
   useEffect(() => {
-    // Super admin must not see inactive users; force tab to active
     if (isSuperAdmin && tab !== 'active') setTab('active');
     if (canManage) {
       loadUsers();
-      if (!isSuperAdmin) {
-        loadTenants();
-      }
-      setAuditPage(1);
-      loadAudits(1);
+      if (!isSuperAdmin) loadTenants();
+      setAuditPage(1); loadAudits(1);
     }
   }, [canManage, isSuperAdmin, tab]);
 
-  useEffect(() => {
-    if (role === 'platform_admin') setStoreId('');
-  }, [role]);
+  useEffect(() => { if (role === 'platform_admin') setStoreId(''); }, [role]);
 
   const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     setMsg(null);
-    if (!canManage) {
-      setMsg({ type: 'error', text: 'You do not have permission to create users.' });
-      return;
-    }
-    if (!name || !email || !password || !passwordConfirm) {
-      setMsg({ type: 'error', text: 'Name, email, password and confirmation are required.' });
-      return;
-    }
-    if (role !== 'platform_admin' && roleOfCurrent !== 'super_admin' && !storeId) {
-      setMsg({ type: 'error', text: 'Tenant is required for non-platform_admin users.' });
-      return;
-    }
-    if (password !== passwordConfirm) {
-      setMsg({ type: 'error', text: 'Passwords do not match.' });
-      return;
-    }
+    if (!canManage) { setMsg({ type: 'error', text: 'Permission denied.' }); return; }
+    if (!name || !email || !password || !passwordConfirm) { setMsg({ type: 'error', text: 'All starred fields inclusive password confirm required.' }); return; }
+    if (role !== 'platform_admin' && roleOfCurrent !== 'super_admin' && !storeId) { setMsg({ type: 'error', text: 'Tenant is required for this role.' }); return; }
+    if (password !== passwordConfirm) { setMsg({ type: 'error', text: 'Passwords do not match.' }); return; }
+    
     setSubmitting(true);
     try {
       const payload: any = { name, email, phone, role, password, passwordConfirm };
-      if (role !== 'platform_admin') {
-        if (roleOfCurrent === 'super_admin') {
-          payload.storeId = String((user as any)?.storeId || '');
-        } else {
-          payload.storeId = storeId;
-        }
-      }
+      if (role !== 'platform_admin') payload.storeId = roleOfCurrent === 'super_admin' ? String((user as any)?.storeId || '') : storeId;
+      
       const res = await api.post('/users', payload);
       if (res.status === 201 || res.status === 200) {
-        const actionText = res.status === 200 ? 'restored' : 'created';
-        setMsg({ type: 'success', text: `User ${name} ${actionText}.` });
+        setMsg({ type: 'success', text: `User ${name} ${res.status === 200 ? 'restored' : 'created'}.` });
         setName(''); setEmail(''); setPhone(''); setStoreId(''); setPassword(''); setPasswordConfirm(''); setRole('refund_agent');
-        loadUsers();
-        loadAudits();
-      } else {
-        setMsg({ type: 'error', text: 'Failed to create user.' });
+        loadUsers(); loadAudits();
       }
-    } catch (e: any) {
-      setMsg({ type: 'error', text: e?.response?.data?.message || e?.response?.data?.error || 'Failed to create user' });
-    } finally {
-      setSubmitting(false);
-    }
+    } catch (e: any) { setMsg({ type: 'error', text: e?.response?.data?.message || 'Failed to create user' }); } finally { setSubmitting(false); }
   };
 
   const onDeleteUser = async (id: string, display: string) => {
-    if (!canManage) {
-      setMsg({ type: 'error', text: 'You do not have permission to delete users.' });
-      return;
-    }
-    if (!id) return;
+    if (!canManage || !id) return;
     if (!window.confirm(`Delete user ${display}? This will deactivate their account.`)) return;
-    setDeletingId(id);
-    setMsg(null);
+    setDeletingId(id); setMsg(null);
     try {
-      const res = await api.delete(`/users/${id}`);
-      if (res.status === 204) {
-        setMsg({ type: 'success', text: `User ${display} deleted.` });
-        loadUsers();
-        loadAudits();
-      } else {
-        setMsg({ type: 'error', text: 'Failed to delete user.' });
-      }
-    } catch (e: any) {
-      setMsg({ type: 'error', text: e?.response?.data?.message || e?.response?.data?.error || 'Failed to delete user' });
-    } finally {
-      setDeletingId(null);
-    }
+      await api.delete(`/users/${id}`);
+      setMsg({ type: 'success', text: `User ${display} deleted.` }); loadUsers(); loadAudits();
+    } catch (e: any) { setMsg({ type: 'error', text: 'Failed to delete user' }); } finally { setDeletingId(null); }
   };
+
+  const roleOptions = [
+    { label: 'Refund Agent', value: 'refund_agent' },
+    { label: 'Platform Admin', value: 'platform_admin', disabled: roleOfCurrent === 'super_admin' },
+    { label: 'Super Admin', value: 'super_admin' }
+  ];
+
+  const tenantOptions = tenants.map((t) => ({ label: t.name, value: t._id }));
 
   return (
     <Box>
-      <Stack spacing={3}>
-        <Grid container spacing={3} alignItems="stretch">
-          <Grid item xs={12} md={6}>
-            <Card sx={{ height: '100%' }}>
-            <CardHeader title="Create User" subheader="Platform Admin or Super Admin" />
-            <CardContent>
-              {msg && <Alert severity={msg.type} sx={{ mb: 2 }}>{msg.text}</Alert>}
-              <Box component="form" onSubmit={onSubmit}>
-                <Stack spacing={2}>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                    <TextField label="Name" value={name} onChange={(e) => setName(e.target.value)} fullWidth required />
-                    <TextField label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth required />
-                  </Stack>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                    <TextField label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} fullWidth />
-                    <FormControl fullWidth>
-                      <InputLabel id="role-label">Role</InputLabel>
-                      <Select labelId="role-label" label="Role" value={role} onChange={(e) => setRole(e.target.value as Role)}>
-                        <MenuItem value="refund_agent">Refund Agent</MenuItem>
-                        {roleOfCurrent !== 'super_admin' && (
-                          <MenuItem value="platform_admin">Platform Admin</MenuItem>
-                        )}
-                        <MenuItem value="super_admin">Super Admin</MenuItem>
-                      </Select>
-                      <FormHelperText>Select the role for this user</FormHelperText>
-                    </FormControl>
-                  </Stack>
+      <Box paddingBlockEnd="400">
+        <Text as="h1" variant="headingLg">Manage Users</Text>
+        <Text as="p" tone="subdued">Create and manage users</Text>
+      </Box>
+
+      <InlineGrid columns={{ xs: 1, md: 2 }} gap="400">
+        {/* Left Column: Form */}
+        <Box>
+          <Card>
+            <Box padding="400">
+              <form onSubmit={onSubmit}>
+                <BlockStack gap="400">
+                  {msg && <Banner tone={msg.type === 'error' ? 'critical' : 'success'}>{msg.text}</Banner>}
+                  
+                  <TextField label="Name *" value={name} onChange={setName} autoComplete="off" />
+                  <TextField label="Email *" type="email" value={email} onChange={setEmail} autoComplete="off" />
+                  <TextField label="Phone" value={phone} onChange={setPhone} autoComplete="off" />
+                  
+                  <Select
+                    label="Role *"
+                    options={roleOptions}
+                    value={role}
+                    onChange={(v) => setRole(v as Role)}
+                  />
+
                   {role !== 'platform_admin' && roleOfCurrent !== 'super_admin' && (
-                    <FormControl fullWidth required>
-                      <InputLabel id="tenant-select-label" shrink>Tenant</InputLabel>
-                      <Select
-                        labelId="tenant-select-label"
-                        label="Tenant"
-                        value={storeId}
-                        onChange={(e) => setStoreId(String(e.target.value))}
-                        displayEmpty
-                      >
-                        <MenuItem value="" disabled>
-                          Select tenant
-                        </MenuItem>
-                        {loadingTenants && (
-                          <MenuItem value="">
-                            <CircularProgress size={16} style={{ marginRight: 8 }} /> Loading…
-                          </MenuItem>
-                        )}
-                        {!loadingTenants && tenants.map((t: Tenant) => (
-                          <MenuItem key={t._id} value={t._id}>{t.name}</MenuItem>
-                        ))}
-                      </Select>
-                      <FormHelperText>Select the tenant to assign this user to</FormHelperText>
-                    </FormControl>
+                    <Select
+                      label="Shop *"
+                      options={[{ label: 'Select shop assigned to user', value: '' }, ...tenantOptions]}
+                      value={storeId}
+                      onChange={setStoreId}
+                      disabled={loadingTenants}
+                    />
                   )}
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                    <TextField label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} fullWidth required />
-                    <TextField label="Confirm Password" type="password" value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.target.value)} fullWidth required />
-                  </Stack>
+
+                  <TextField label="Password *" type="password" value={password} onChange={setPassword} autoComplete="off" />
+                  <TextField label="Confirm Password *" type="password" value={passwordConfirm} onChange={setPasswordConfirm} autoComplete="off" />
+
                   <Box>
-                    <Button type="submit" variant="contained" disabled={submitting || !canManage}>
-                      {submitting ? 'Creating…' : 'Create User'}
+                    <Button submit variant="primary" loading={submitting} disabled={!canManage}>
+                      Create User
                     </Button>
                   </Box>
-                </Stack>
-              </Box>
-            </CardContent>
-            </Card>
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ height: '100%', overflow: 'hidden', borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-            <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider', backgroundColor: 'background.paper' }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>All Users</Typography>
-              <Typography variant="caption" color="text.secondary">
-                {loading
-                  ? 'Loading…'
-                  : isSuperAdmin
-                    ? `${users.length} ${users.length === 1 ? 'user' : 'users'} (scoped to your tenant)`
-                    : `${users.length} ${tab} ${users.length === 1 ? 'user' : 'users'}`}
-              </Typography>
+                </BlockStack>
+              </form>
             </Box>
-            {!isSuperAdmin && (
-              <Box sx={{ px: 2, pt: 1 }}>
-                <Tabs value={tab} onChange={(_, v) => setTab(v)} aria-label="user status tabs" variant="fullWidth">
-                  <Tab label="Active" value="active" />
-                  <Tab label="Inactive" value="inactive" />
-                </Tabs>
-              </Box>
-            )}
-            <Box sx={{ maxHeight: 440, overflow: 'auto' }}>
-              <Table size="small" stickyHeader>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Name</TableCell>
-                    <TableCell>Email</TableCell>
-                    <TableCell>Role</TableCell>
-                    <TableCell>Tenant</TableCell>
-                    <TableCell align="right">Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {users.map((u: any) => {
-                    const id = u.id || u._id;
-                    const isSelf = id === currentUserId;
-                    const display = u.name || u.email || id;
-                    const inactive = u.isActive === false;
-                    return (
-                      <TableRow key={id} hover selected={inactive}>
-                        <TableCell>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            {inactive && <Chip size="small" label="Inactive" color="default" variant="outlined" />}
-                            <span>{u.name}</span>
-                          </Box>
-                        </TableCell>
-                        <TableCell>{u.email}</TableCell>
-                        <TableCell sx={{ textTransform: 'capitalize' }}>{String(u.role || '').replace('_', ' ')}</TableCell>
-                        <TableCell>{u.storeId?.name || '—'}</TableCell>
-                        <TableCell align="right">
-                          {tab === 'active' && (
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              color="error"
-                              disabled={!canManage || isSelf || deletingId === id}
-                              onClick={() => onDeleteUser(id, display)}
-                              sx={{ ml: 1 }}
-                            >
-                              {deletingId === id ? 'Deleting…' : 'Delete'}
-                            </Button>
-                          )}
-                          {!isSuperAdmin && tab === 'inactive' && (
-                            <Stack direction="row" spacing={1} justifyContent="flex-end">
-                              <Button
-                                size="small"
-                                variant="text"
-                                color="error"
-                                sx={{ fontWeight: 600, opacity: 0.9 }}
-                                disabled={!canManage || rowBusyId === id}
-                                onClick={async () => {
-                                  if (!window.confirm(`Permanently delete ${display}? This cannot be undone.`)) return;
-                                  try {
-                                    setMsg(null);
-                                    setRowBusyId(id);
-                                    const resp = await api.delete(`/users/${id}`, { params: { permanent: true } });
-                                    if (resp.status === 200 && (resp.data?.deletedCount === 1 || resp.data?.deletedId)) {
-                                      setMsg({ type: 'success', text: `User ${display} permanently deleted.` });
-                                      setUsers(prev => prev.filter((x: any) => (x._id || x.id) !== id));
-                                      await loadUsers();
-                                      loadAudits();
-                                    } else {
-                                      setMsg({ type: 'error', text: 'Failed to permanently delete user.' });
-                                    }
-                                  } catch (e: any) {
-                                    setMsg({ type: 'error', text: e?.response?.data?.message || e?.response?.data?.error || 'Failed to permanently delete user' });
-                                  } finally {
-                                    setRowBusyId(null);
-                                  }
-                                }}
-                              >
-                                Permanent Delete
-                              </Button>
-                            </Stack>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {!users.length && !loading && (
-                    <TableRow>
-                      <TableCell colSpan={5} align="center">
-                        <Typography variant="body2" color="text.secondary">No users found.</Typography>
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </Box>
-            </Paper>
-          </Grid>
+          </Card>
+        </Box>
 
-          <Grid item xs={12}>
-            <Card>
-              <CardHeader
-                title="Recent User Audit Logs"
-                subheader={
-                  loadingAudits
-                    ? 'Loading…'
-                    : auditTotal > 0
-                      ? `Page ${auditPage} of ${Math.max(1, Math.ceil(auditTotal / auditLimit))} • ${auditTotal} total`
-                      : 'No entries'
-                }
-              />
-              <CardContent sx={{ p: 0, maxHeight: 360, overflowY: 'auto' }}>
-                {loadingAudits && (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                    <CircularProgress size={24} />
-                  </Box>
-                )}
-                {!loadingAudits && audits.length === 0 && (
-                  <Box sx={{ p: 2 }}>
-                    <Typography variant="body2" color="text.secondary">No audit entries yet.</Typography>
-                  </Box>
-                )}
-                {!loadingAudits && audits.length > 0 && (
-                  <Box>
-                    {audits.map((a: any, idx: number) => {
-                      const left = (
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-                          <Chip
-                            size="small"
-                            label={a.action}
-                            color={
-                              a.action === 'USER_CREATED'
-                                ? 'success'
-                                : a.action === 'USER_DELETED'
-                                  ? 'warning'
-                                  : a.action === 'USER_RESTORED'
-                                    ? 'info'
-                                    : 'default'
-                            }
-                            variant="outlined"
-                          />
-                          <Typography variant="body2" sx={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {a.targetUser?.name || a.targetUser?.email || a.targetUser || 'User'}
-                          </Typography>
-                        </Box>
-                      );
-                      const right = (
-                        <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
-                          {new Date(a.createdAt).toLocaleString()}
-                        </Typography>
-                      );
-                      return (
-                        <Box key={a._id} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, px: 2, py: 1.25, borderTop: idx === 0 ? 'none' : '1px solid', borderColor: 'divider' }}>
-                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, minWidth: 0, flex: 1 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, minWidth: 0 }}>
-                              {left}
-                              {right}
-                            </Box>
-                            <Typography variant="caption" color="text.secondary" sx={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              by {a.actor?.name || a.actor?.email || a.actor} • {a.tenant?.name || a.tenant || '—'}
-                            </Typography>
-                          </Box>
-                        </Box>
-                      );
-                    })}
-                    {/* Pagination controls */}
-                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
-                      <Pagination
-                        size="small"
-                        page={auditPage}
-                        count={Math.max(1, Math.ceil(auditTotal / auditLimit) || 1)}
-                        onChange={(_, pageNum) => {
-                          setAuditPage(pageNum);
-                          loadAudits(pageNum);
-                        }}
-                      />
+        {/* Right Column: List and Audits */}
+        <BlockStack gap="400">
+          <Card padding="0">
+            <Box padding="400" borderBlockEndWidth="100" borderColor="border">
+              <InlineStack align="space-between">
+                <div>
+                  <Text as="h3" variant="headingMd">All Users</Text>
+                  <Text as="p" tone="subdued">{loading ? 'Loading...' : `${users.length} Members`}</Text>
+                </div>
+              </InlineStack>
+            </Box>
+            
+            <Box padding="400">
+              <BlockStack gap="300">
+                {users.map((u: any) => {
+                  const id = u.id || u._id;
+                  const isSelf = id === currentUserId;
+                  const display = u.name || u.email || id;
+                  return (
+                    <Box key={id} padding="300" background="bg-surface-secondary" borderRadius="300">
+                      <InlineGrid columns={{ xs: '1fr auto', sm: '1fr 1fr auto' }} alignItems="center" gap="300">
+                        {/* Avatar and Name */}
+                        <InlineStack gap="300" blockAlign="center">
+                          <div style={{ width: 44, height: 44, borderRadius: '50%', backgroundColor: '#5c5f62', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <div style={{ width: 24, height: 24, fill: '#ffffff' }}>
+                              <Icon source={PersonIcon} tone="textInverse" />
+                            </div>
+                          </div>
+                          <div>
+                            <Text as="p" variant="bodyMd" fontWeight="semibold">{u.name}</Text>
+                            <Text as="p" variant="bodySm" tone="subdued">{u.email}</Text>
+                          </div>
+                        </InlineStack>
+
+                        {/* Role and Store */}
+                        <div>
+                          <Text as="p" variant="bodyMd" tone="subdued">
+                            {String(u.role || '').split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')}
+                          </Text>
+                          <Text as="p" variant="bodySm" tone="subdued">
+                            {u.storeId?.name || 'No Store Assigned'}
+                          </Text>
+                        </div>
+                        
+                        {/* Actions */}
+                        <InlineStack align="end" gap="200" blockAlign="center">
+                          <ButtonGroup>
+                            <Button icon={EditIcon} variant="tertiary" onClick={() => {}} disabled />
+                            <Button icon={DeleteIcon} variant="tertiary" onClick={() => onDeleteUser(id, display)} disabled={isSelf || !canManage} />
+                          </ButtonGroup>
+                        </InlineStack>
+                      </InlineGrid>
                     </Box>
-                  </Box>
-                )}
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-      </Stack>
+                  );
+                })}
+              </BlockStack>
+            </Box>
+          </Card>
+
+          {/* Audit Logs */}
+          <Card padding="0">
+            <Box padding="400" borderBlockEndWidth="100" borderColor="border">
+              <Text as="h3" variant="headingMd">User Audit Logs</Text>
+              <Text as="p" tone="subdued">Page {auditPage} of {Math.max(1, Math.ceil(auditTotal / auditLimit))}</Text>
+            </Box>
+
+            <IndexTable
+              resourceName={{ singular: 'audit', plural: 'audits' }}
+              itemCount={audits.length}
+              headings={[
+                { title: 'User' },
+                { title: 'Action' },
+                { title: 'Shop' },
+                { title: 'Date' },
+                { title: 'Info' }
+              ]}
+              selectable={false}
+            >
+              {audits.map((a: any, idx: number) => (
+                <IndexTable.Row id={a._id} key={a._id} position={idx}>
+                  <IndexTable.Cell>
+                    <Text as="span" fontWeight="semibold">{a.targetUser?.name || 'User'}</Text>
+                  </IndexTable.Cell>
+                  <IndexTable.Cell>
+                    <Badge tone={a.action === 'USER_CREATED' ? 'success' : a.action === 'USER_DELETED' ? 'critical' : 'attention'}>
+                      {a.action.replace('USER_', '')}
+                    </Badge>
+                  </IndexTable.Cell>
+                  <IndexTable.Cell>{a.tenant?.name || '—'}</IndexTable.Cell>
+                  <IndexTable.Cell>{new Date(a.createdAt).toLocaleDateString()}</IndexTable.Cell>
+                  <IndexTable.Cell>{a.actor?.name || '—'}</IndexTable.Cell>
+                </IndexTable.Row>
+              ))}
+            </IndexTable>
+          </Card>
+        </BlockStack>
+      </InlineGrid>
     </Box>
   );
 }
+

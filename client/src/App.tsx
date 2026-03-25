@@ -20,13 +20,12 @@ export default function App() {
       <BrowserRouter>
         {/* Header bar structure */}
         <Box 
-          paddingBlock="400" 
           paddingInline="600" 
-          borderBottomWidth="100" 
+          borderBlockEndWidth="100" 
           borderColor="border" 
           background="bg-surface"
         >
-          <InlineStack align="space-between" blockAlign="center">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '64px' }}>
             <Box>
               <Text as="h2" variant="headingLg" fontWeight="semibold">
                 Refunds Portal
@@ -36,7 +35,7 @@ export default function App() {
             <NavLinks />
             
             <HeaderRight />
-          </InlineStack>
+          </div>
         </Box>
 
         {/* Main Content Area */}
@@ -91,38 +90,27 @@ function NavLinks() {
   if (canSeeMaintenance) items.push({ to: '/admin/maintenance', label: 'Maintenance', show: true });
 
   return (
-    <InlineStack gap="400" align="center">
+    <InlineStack gap="600" align="center" blockAlign="stretch" wrap={false}>
       {items.filter(i => i.show).map((item) => {
         const active = pathname === item.to || pathname.startsWith(item.to + '/');
-        // Custom link styling replicating green underline mockup
         return (
-          <Box key={item.to} position="relative" paddingBlock="100">
+          <div key={item.to} style={{ position: 'relative', display: 'flex', alignItems: 'center', height: '64px', padding: '0 4px' }}>
             <RouterLink 
               to={item.to} 
               style={{
                 textDecoration: 'none',
                 color: active ? 'var(--p-color-text)' : 'var(--p-color-text-subdued)',
                 fontWeight: active ? '600' : '500',
-                fontSize: '14px',
-                padding: '4px 8px',
-                borderRadius: '4px',
+                fontSize: '15px',
                 transition: 'color 0.15s ease',
               }}
             >
               {item.label}
             </RouterLink>
             {active && (
-              <Box 
-                position="absolute" 
-                insetBlockEnd="0px" 
-                insetInlineStart="0px" 
-                insetInlineEnd="0px" 
-                height="3px" 
-                background="bg-subdued" // placeholder, but we will style it emerald green setup below
-                style={{ backgroundColor: '#008060', borderRadius: '2px' }} // Polaris green
-              />
+              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px', backgroundColor: '#008060', borderTopLeftRadius: '3px', borderTopRightRadius: '3px' }} />
             )}
-          </Box>
+          </div>
         );
       })}
     </InlineStack>
