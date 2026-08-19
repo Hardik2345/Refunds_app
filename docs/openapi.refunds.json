@@ -66,12 +66,25 @@
           "ruleSetId": { "type": "string", "nullable": true },
           "attemptsToday": { "type": "integer", "nullable": true },
           "daysSinceDelivery": { "type": "integer", "nullable": true },
+          "cashbackStatus": { "type": "string", "enum": ["available", "unavailable", "not_configured"] },
           "availableBalance": { "type": "number", "nullable": true, "description": "Current available cashback balance from Flits, normalized as abs(customer.credits)/100" },
           "totalDeducted": { "type": "number", "nullable": true, "description": "Cumulative cashback debits from Flits, normalized as abs(raw)/100" },
           "totalCredited": { "type": "number", "nullable": true, "description": "Derived reconciliation value: availableBalance + totalDeducted" },
           "totalCredits": { "type": "number", "nullable": true, "deprecated": true, "description": "Backward-compatible alias of availableBalance" },
           "totalSpentCredits": { "type": "number", "nullable": true, "deprecated": true, "description": "Backward-compatible alias of totalDeducted" },
           "totalSpentCreditsRaw": { "type": "number", "nullable": true, "description": "Raw spent cashback credits from Flits (e.g., paise) used for policy checks" }
+        }
+      },
+      "CashbackSummary": {
+        "type": "object",
+        "description": "Customer-level cashback summary. Returned once per unique customer, not once per order.",
+        "properties": {
+          "customerId": { "type": "string", "nullable": true },
+          "status": { "type": "string", "enum": ["available", "unavailable", "not_configured"] },
+          "availableBalance": { "type": "number", "nullable": true },
+          "totalDeducted": { "type": "number", "nullable": true },
+          "totalCredited": { "type": "number", "nullable": true, "description": "Derived as availableBalance + totalDeducted" },
+          "fetchedAt": { "type": "string", "format": "date-time", "nullable": true }
         }
       },
       "BulkPreviewResult": {
@@ -87,6 +100,9 @@
       "BulkPreviewResponse": {
         "type": "object",
         "properties": {
+          "cashbackSummary": { "allOf": [{ "$ref": "#/components/schemas/CashbackSummary" }], "nullable": true, "description": "Populated when all preview items resolve to one customer" },
+          "cashbackSummaries": { "type": "array", "items": { "$ref": "#/components/schemas/CashbackSummary" }, "description": "One entry per unique customer" },
+          "cashbackStatus": { "type": "string", "enum": ["available", "unavailable", "not_configured", "multiple_customers"] },
           "results": { "type": "array", "items": { "$ref": "#/components/schemas/BulkPreviewResult" } }
         }
       }
@@ -176,7 +192,7 @@
         "security": [{ "bearerAuth": [] }],
         "tags": ["Orders"],
         "summary": "Bulk preview refund eligibility (dry run)",
-        "description": "Dry-runs the refund rules engine for multiple items. No refunds are executed. Uses the same context builder (Shopify lookups) to provide realistic decisions.",
+        "description": "Dry-runs the refund rules engine for multiple items. No refunds are executed. Flits cashback is fetched once per unique customer, reused across order evaluations, and returned as a customer-level summary.",
         "requestBody": {
           "required": true,
           "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BulkPreviewRequest" } } }

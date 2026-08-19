@@ -13,9 +13,19 @@ interface RuleDecision { outcome: 'ALLOW' | 'DENY' | 'REQUIRE_APPROVAL'; reason?
 interface PreviewResult { orderId: number | null; decision: RuleDecision | null; requiresApproval: boolean | null; ctxHints?: { orderId?: number | null; rulesVersion?: number; ruleSetId?: string | null; attemptsToday?: number | null; daysSinceDelivery?: number | null; availableBalance?: number | null; totalDeducted?: number | null; totalCredited?: number | null; totalCredits?: number | null; totalSpentCredits?: number | null } | null; error?: string | null }
 
 interface CashbackSummary {
+	customerId?: string | null;
+	status?: 'available' | 'unavailable' | 'not_configured';
 	totalCredited: number | null;
 	totalDeducted: number | null;
 	availableBalance: number | null;
+	fetchedAt?: string | null;
+}
+
+interface BulkPreviewResponse {
+	results: PreviewResult[];
+	cashbackSummary?: CashbackSummary | null;
+	cashbackSummaries?: CashbackSummary[];
+	cashbackStatus?: 'available' | 'unavailable' | 'not_configured' | 'multiple_customers';
 }
 
 export default function AgentDashboard() {
@@ -29,6 +39,7 @@ export default function AgentDashboard() {
 	// Tabs: 0 = Orders, 1 = Cashback
 	const [tab, setTab] = useState(0);
 	const [cashbackSummary, setCashbackSummary] = useState<CashbackSummary | null>(null);
+	const [cashbackStatus, setCashbackStatus] = useState<BulkPreviewResponse['cashbackStatus'] | 'idle'>('idle');
 	// Partial refund dialog state
 	const [partialDlg, setPartialDlg] = useState<{ open: boolean; order: OrderSummary | null }>({ open: false, order: null });
 	// Selection state per orderId -> per lineItemId -> { selected, quantity, amount }
@@ -74,6 +85,7 @@ export default function AgentDashboard() {
 		setSelectionPreview({});
 		setSelections({});
 		setCashbackSummary(null);
+		setCashbackStatus('idle');
 		try {
 			const params = searchMode === 'phone' ? { phone: query } : { orderName: query };
 			const res = await api.get<GetOrdersResponse>('/orders', { params });
@@ -82,13 +94,13 @@ export default function AgentDashboard() {
 			if (found.length) {
 				const items = found.map(o => ({ orderId: o.id }));
 				const body = searchMode === 'phone' ? { phone: query, items } : { items };
-				const p = await api.post<{ results: PreviewResult[] }>('/refund/preview/bulk', body);
+				const p = await api.post<BulkPreviewResponse>('/refund/preview/bulk', body);
 					const byId: Record<string, PreviewResult> = {};
-					let summary: CashbackSummary | null = null;
+					let summary: CashbackSummary | null = p.data.cashbackSummary ?? null;
 				for (const r of p.data.results) {
 					if (r && r.orderId != null) byId[String(r.orderId)] = r;
-						// Cashback is customer-level data, so reuse the first preview
-						// result that contains it instead of treating it as order data.
+						// Compatibility fallback for servers that still return cashback
+						// only inside each order's context hints.
 						const availableBalance = r?.ctxHints?.availableBalance ?? r?.ctxHints?.totalCredits;
 						const totalDeducted = r?.ctxHints?.totalDeducted ?? r?.ctxHints?.totalSpentCredits;
 						const totalCredited = r?.ctxHints?.totalCredited
@@ -104,7 +116,8 @@ export default function AgentDashboard() {
 						}
 				}
 				setPreview(byId);
-					setCashbackSummary(summary);
+				setCashbackSummary(summary?.status === 'available' || summary?.status == null ? summary : null);
+				setCashbackStatus(p.data.cashbackStatus ?? summary?.status ?? (summary ? 'available' : 'unavailable'));
 			}
 		} catch (err: any) {
 			setError(err?.response?.data?.error || 'Failed to fetch orders');
@@ -444,8 +457,14 @@ export default function AgentDashboard() {
 									<Typography variant="h6">{cashbackSummary.availableBalance ?? '—'}</Typography>
 								</Box>
 							</Box>
+						) : cashbackStatus === 'not_configured' ? (
+							<Alert severity="warning">Flits cashback is not configured for this environment.</Alert>
+						) : cashbackStatus === 'multiple_customers' ? (
+							<Alert severity="info">Cashback is available for multiple customers and cannot be shown as one summary.</Alert>
+						) : cashbackStatus === 'unavailable' ? (
+							<Alert severity="warning">Cashback information is temporarily unavailable.</Alert>
 						) : (
-							<Alert severity="info">No cashback information available for this customer.</Alert>
+							<Alert severity="info">Search for a customer to load cashback information.</Alert>
 						)}
 					</CardContent>
 				</Card>

@@ -72,16 +72,6 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Tiny memo helper (placeholder, can be extended later)
-function makeMemo() {
-  const store = new Map();
-  return {
-    get: (k) => store.get(k),
-    set: (k, v) => { store.set(k, v); return v; },
-    has: (k) => store.has(k),
-  };
-}
-
 // Concurrency mapper with retries
 async function mapWithConcurrency(items, limit, mapper, maxRetries = 3) {
   const results = new Array(items.length);
@@ -860,14 +850,15 @@ exports.bulkPreviewRefunds = async (req, res) => {
   try {
     const tenant = req.tenant;
     const user = req.user;
-  const defaultPhone = req.body?.phone || null;
+    const defaultPhone = req.body?.phone || null;
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
 
     if (!items.length) {
       return res.status(400).json({ error: "Provide items: [{ orderId, amount?, lineItems? }]" });
     }
 
-    const memo = makeMemo(); // reserved for later caching if you want
+    const requestMemo = new Map();
+    const cashbackByCustomer = new Map();
     const CONCURRENCY = 4;   // 3–5 is usually safe for Shopify
 
     const results = await mapWithConcurrency(items, CONCURRENCY, async (item) => {
@@ -879,7 +870,15 @@ exports.bulkPreviewRefunds = async (req, res) => {
       };
 
       // Fake req/res to reuse buildRefundContext
-      const fakeReq = { ...req, tenant, user, body: payload, ruleContext: undefined, memo };
+      const fakeReq = {
+        ...req,
+        tenant,
+        user,
+        body: payload,
+        ruleContext: undefined,
+        requestMemo,
+        cashbackLookupOptions: { useRedisCache: true },
+      };
       const fakeRes = {
         statusCode: 200,
         headers: {},
@@ -897,12 +896,25 @@ exports.bulkPreviewRefunds = async (req, res) => {
         decision.outcome === "REQUIRE_APPROVAL" &&
         !((fakeReq.ruleContext.user?.roles || []).includes("super_admin"));
 
+      const customerId = fakeReq.ruleContext.order?.customerId;
+      if (customerId != null) {
+        cashbackByCustomer.set(String(customerId), {
+          customerId: String(customerId),
+          status: fakeReq.ruleContext.meta?.cashbackStatus || "unavailable",
+          availableBalance: fakeReq.ruleContext.meta?.availableBalance ?? null,
+          totalDeducted: fakeReq.ruleContext.meta?.totalDeducted ?? null,
+          totalCredited: fakeReq.ruleContext.meta?.totalCredited ?? null,
+          fetchedAt: fakeReq.ruleContext.meta?.cashbackFetchedAt ?? null,
+        });
+      }
+
       const ctxHints = {
         orderId: fakeReq.ruleContext.order?.id || payload.orderId || null,
         rulesVersion: fakeReq.ruleContext.rulesVersion,
         ruleSetId: fakeReq.ruleContext.ruleSetId,
         attemptsToday: fakeReq.ruleContext.meta?.attemptsToday,
         daysSinceDelivery: fakeReq.ruleContext.meta?.daysSinceDelivery,
+        cashbackStatus: fakeReq.ruleContext.meta?.cashbackStatus || "unavailable",
         availableBalance: fakeReq.ruleContext.meta?.availableBalance ?? null,
         totalDeducted: fakeReq.ruleContext.meta?.totalDeducted ?? null,
         totalCredited: fakeReq.ruleContext.meta?.totalCredited ?? null,
@@ -929,7 +941,20 @@ exports.bulkPreviewRefunds = async (req, res) => {
       return r;
     });
 
-    return res.status(200).json({ results: normalized });
+    const cashbackSummaries = Array.from(cashbackByCustomer.values());
+    const cashbackSummary = cashbackSummaries.length === 1 ? cashbackSummaries[0] : null;
+    const cashbackStatus = cashbackSummaries.length === 1
+      ? cashbackSummaries[0].status
+      : cashbackSummaries.length > 1
+        ? "multiple_customers"
+        : "unavailable";
+
+    return res.status(200).json({
+      results: normalized,
+      cashbackSummary,
+      cashbackSummaries,
+      cashbackStatus,
+    });
   } catch (err) {
     console.error("[bulkPreviewRefunds] failed:", err.message);
     return res.status(500).json({ error: "Failed to preview refunds in bulk" });

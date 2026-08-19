@@ -2,6 +2,10 @@
 
 Tenant-aware refunds service backed by Express + Mongoose with Shopify integration and a React/MUI frontend.
 
+## Flits cashback
+
+Set `FLITS_USER_ID` and `FLITS_API_KEY` to enable customer cashback lookups. Bulk refund preview deduplicates concurrent lookups by Shopify customer ID and uses a short Redis cache; configure its duration with `FLITS_CACHE_TTL_SECONDS` (30 seconds by default). Final refund execution bypasses this cashback cache and fetches fresh data.
+
 ## What’s new (v1.2.0)
 
 - Search by Phone or Order Name in the Agent Dashboard.
@@ -34,4 +38,3 @@ See CHANGELOG.md for detailed notes.
 
 - Backend: Node/Express, Mongoose; Shopify REST + GraphQL
 - Frontend: Vite + React + MUI
-

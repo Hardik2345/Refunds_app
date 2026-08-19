@@ -4,6 +4,7 @@ const redis = require("../utils/redisClient");
 // ---- Model-backed rule loading ----
 const RefundRules = require("../models/refundRulesModel");
 const RefundStat = require("../models/refundStatModel");
+const { getFlitsCashback } = require("../services/flitsService");
 
 // Optional JSON Schema validation (keeps Admin/UI and server in sync)
 let validateRefundRules = null;
@@ -37,6 +38,14 @@ function pickApiVersion(tenant) {
 }
 function shopHeaders(tenant) {
   return { "X-Shopify-Access-Token": tenant.accessToken };
+}
+
+function memoizeRequest(cache, key, loader) {
+  if (!cache) return loader();
+  if (cache.has(key)) return cache.get(key);
+  const value = Promise.resolve().then(loader);
+  cache.set(key, value);
+  return value;
 }
 
 /**
@@ -75,14 +84,18 @@ async function buildRefundContext(req, res, next) {
     let customerId = null;
     if (phone) {
       try {
-        const url = `https://${tenant.shopDomain}.myshopify.com/admin/api/2024-07/customers/search.json`;
-        const resp = await axios.get(url, {
-          params: { query: `phone:${phone}` },
-          headers: shopHeaders(tenant),
-        });
-        if (resp.data.customers?.length) {
-          customerId = resp.data.customers[0].id;
-        }
+        customerId = await memoizeRequest(
+          req.requestMemo,
+          `shopify:customer:phone:${String(phone)}`,
+          async () => {
+            const url = `https://${tenant.shopDomain}.myshopify.com/admin/api/2024-07/customers/search.json`;
+            const resp = await axios.get(url, {
+              params: { query: `phone:${phone}` },
+              headers: shopHeaders(tenant),
+            });
+            return resp.data.customers?.[0]?.id || null;
+          }
+        );
       } catch (_) {
         customerId = null; // best effort in dev
       }
@@ -180,42 +193,12 @@ async function buildRefundContext(req, res, next) {
     const deliveredTs = deliveredAt ? new Date(deliveredAt).getTime() : null;
     const daysSinceDelivery = deliveredTs ? Math.floor((nowTs - deliveredTs) / 86_400_000) : null;
 
-    // Cashback credits via Flits API – optional and best-effort.
-    // Flits `credits` is already the customer's remaining balance. Do not
-    // subtract `total_spent_credits` from it again.
-    let totalSpentCreditsRaw = null;
-    let totalSpentCredits = null;
-    let totalCredits = null;
-    if (customerId && process.env.FLITS_USER_ID && process.env.FLITS_API_KEY) {
-      try {
-        const url = `https://app.getflits.com/api/1/${process.env.FLITS_USER_ID}/${customerId}/credit/get_credit`;
-        const r = await axios.get(url, { params: { token: process.env.FLITS_API_KEY } });
-        const spent = Number(r?.data?.customer?.total_spent_credits ?? r?.data?.total_spent_credits);
-        if (Number.isFinite(spent)) {
-          totalSpentCreditsRaw = spent;
-          totalSpentCredits = Math.abs(spent) / 100; // normalized display value
-        }
-        const credits = Number(r?.data?.customer?.credits);
-        if (Number.isFinite(credits)) totalCredits = credits;
-      } catch (_) {
-        totalSpentCreditsRaw = null;
-        totalSpentCredits = null; // skip if failed
-        totalCredits = null;
-      }
-    }
-
-    const availableBalance = Number.isFinite(totalCredits)
-      ? Math.abs(totalCredits) / 100
-      : null;
-    const totalDeducted = totalSpentCredits;
-    // Flits' balance endpoint does not provide a lifetime-earned field. This
-    // derived value reconciles the available balance and cumulative debits.
-    // If Flits later exposes a transaction ledger, prefer summing credits from
-    // that ledger so expiries and manual adjustments can be classified.
-    const totalCredited =
-      availableBalance != null && totalDeducted != null
-        ? availableBalance + totalDeducted
-        : null;
+    const cashback = await getFlitsCashback({
+      tenantId: tenant._id || tenant.id || null,
+      customerId,
+      requestCache: req.requestMemo,
+      useRedisCache: req.cashbackLookupOptions?.useRedisCache === true,
+    });
 
 
     // Build context object for the evaluator
@@ -247,14 +230,16 @@ async function buildRefundContext(req, res, next) {
         daysSinceDelivery,
         lifetimeRefundCount,
         customerKey,
-        availableBalance,
-        totalDeducted,
-        totalCredited,
+        cashbackStatus: cashback.status,
+        cashbackFetchedAt: cashback.fetchedAt,
+        availableBalance: cashback.availableBalance,
+        totalDeducted: cashback.totalDeducted,
+        totalCredited: cashback.totalCredited,
         // Backward-compatible aliases. New consumers should use the explicit
         // fields above to avoid treating the balance as lifetime cashback.
-        totalSpentCredits, // alias of totalDeducted
-        totalSpentCreditsRaw, // raw units from Flits (e.g., paise)
-        totalCredits: availableBalance, // alias of availableBalance
+        totalSpentCredits: cashback.totalDeducted,
+        totalSpentCreditsRaw: cashback.totalDeductedRaw,
+        totalCredits: cashback.availableBalance,
       },
       request: {
         lineItems: Array.isArray(lineItems) ? lineItems : []

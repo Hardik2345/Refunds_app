@@ -8,6 +8,8 @@ Cashback
 - Treat Flits `customer.credits` as the available balance rather than subtracting cumulative deductions from it again.
 - Expose explicit `availableBalance`, `totalDeducted`, and derived `totalCredited` preview fields while retaining the old field names as compatibility aliases.
 - Update the Cashback tab to show a reconciled three-field summary and clear stale cashback data between searches.
+- Fetch Flits once per unique customer during bulk preview using an in-flight request cache, with an optional 30-second Redis preview cache.
+- Return cashback once at the top level of the bulk-preview response and show unavailable/not-configured states without converting missing data to zero.
 
 ## 1.2.0 - 2025-10-02
 
