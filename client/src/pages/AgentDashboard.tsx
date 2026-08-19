@@ -3,42 +3,45 @@ import { Page, Layout, Card, Text, TextField, InlineStack, Badge, Button, IndexT
 import { CustomSelect } from '../components/CustomSelect';
 import { FilterIcon } from '@shopify/polaris-icons';
 import api from '../apiClient';
+import {
+	useAgentSearch,
+	type CashbackStatus,
+	type CashbackSummary,
+	type OrderLineItem,
+	type OrderSummary,
+	type PreviewResult,
+} from '../agent/AgentSearchContext';
 
-
-interface OrderLineItem { id: number; name: string; quantity: number; price: string; }
-interface OrderSummary { id: number; name: string; created_at: string; current_subtotal_price: string; financial_status: string; fulfillment_status: string; line_items: OrderLineItem[]; customer: { id: number; first_name: string; last_name: string; email: string; phone: string } | null }
 interface GetOrdersResponse { orders: OrderSummary[]; nextPageInfo?: string | null }
-
-interface RuleDecision { outcome: 'ALLOW' | 'DENY' | 'REQUIRE_APPROVAL'; reason?: string; matched?: string[]; rulesVersion?: number; ruleSetId?: string | null }
-interface PreviewResult { orderId: number | null; decision: RuleDecision | null; requiresApproval: boolean | null; ctxHints?: { orderId?: number | null; rulesVersion?: number; ruleSetId?: string | null; attemptsToday?: number | null; daysSinceDelivery?: number | null; availableBalance?: number | null; totalDeducted?: number | null; totalCredited?: number | null; totalCredits?: number | null; totalSpentCredits?: number | null } | null; error?: string | null }
-
-interface CashbackSummary {
-	customerId?: string | null;
-	status?: 'available' | 'unavailable' | 'not_configured';
-	totalCredited: number | null;
-	totalDeducted: number | null;
-	availableBalance: number | null;
-	fetchedAt?: string | null;
-}
 
 interface BulkPreviewResponse {
 	results: PreviewResult[];
 	cashbackSummary?: CashbackSummary | null;
 	cashbackSummaries?: CashbackSummary[];
-	cashbackStatus?: 'available' | 'unavailable' | 'not_configured' | 'multiple_customers';
+	cashbackStatus?: CashbackStatus;
 }
 
 export default function AgentDashboard() {
-	const [searchMode, setSearchMode] = useState<'phone'|'orderName'>('phone');
-	const [query, setQuery] = useState('');
-	const [orders, setOrders] = useState<OrderSummary[] | null>(null);
-	const [preview, setPreview] = useState<Record<string, PreviewResult>>({});
+	const {
+		searchMode,
+		setSearchMode,
+		query,
+		setQuery,
+		orders,
+		setOrders,
+		preview,
+		setPreview,
+		tab,
+		setTab,
+		cashbackSummary,
+		setCashbackSummary,
+		cashbackStatus,
+		setCashbackStatus,
+		setLastFetchedAt,
+		clearSearch,
+	} = useAgentSearch();
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	// Tabs: 0 = Orders, 1 = Cashback
-	const [tab, setTab] = useState(0);
-	const [cashbackSummary, setCashbackSummary] = useState<CashbackSummary | null>(null);
-	const [cashbackStatus, setCashbackStatus] = useState<BulkPreviewResponse['cashbackStatus'] | 'idle'>('idle');
 	// Partial refund dialog state
 	const [partialDlg, setPartialDlg] = useState<{ open: boolean; order: OrderSummary | null }>({ open: false, order: null });
 	// Selection state per orderId -> per lineItemId -> { selected, quantity, amount }
@@ -104,6 +107,7 @@ export default function AgentDashboard() {
 				setCashbackSummary(summary?.status === 'available' || summary?.status == null ? summary : null);
 				setCashbackStatus(p.data.cashbackStatus ?? summary?.status ?? (summary ? 'available' : 'unavailable'));
 			}
+			setLastFetchedAt(Date.now());
 		} catch (err: any) {
 			setError(err?.response?.data?.error || 'Failed to fetch orders');
 		} finally {
@@ -349,7 +353,7 @@ export default function AgentDashboard() {
                         value={query}
                         onChange={setQuery}
                         clearButton
-                        onClearButtonClick={() => setQuery('')}
+                        onClearButtonClick={clearSearch}
                       />
                     </div>
                   </InlineStack>

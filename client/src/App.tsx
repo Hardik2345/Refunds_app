@@ -15,12 +15,15 @@ import UserMenu from './components/UserMenu';
 import { Box, InlineStack, Text } from '@shopify/polaris';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PageTransition } from './components/PageTransition';
+import { AgentSearchProvider } from './agent/AgentSearchContext';
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <AppContent />
+        <AgentSearchProvider>
+          <AppContent />
+        </AgentSearchProvider>
       </BrowserRouter>
     </AuthProvider>
   );
@@ -157,4 +160,3 @@ function NavLinks() {
     </InlineStack>
   );
 }
-
