@@ -10,7 +10,13 @@ interface OrderSummary { id: number; name: string; created_at: string; current_s
 interface GetOrdersResponse { orders: OrderSummary[]; nextPageInfo?: string | null }
 
 interface RuleDecision { outcome: 'ALLOW' | 'DENY' | 'REQUIRE_APPROVAL'; reason?: string; matched?: string[]; rulesVersion?: number; ruleSetId?: string | null }
-interface PreviewResult { orderId: number | null; decision: RuleDecision | null; requiresApproval: boolean | null; ctxHints?: { orderId?: number | null; rulesVersion?: number; ruleSetId?: string | null; attemptsToday?: number | null; daysSinceDelivery?: number | null; totalCredits?: number | null; totalSpentCredits?: number | null } | null; error?: string | null }
+interface PreviewResult { orderId: number | null; decision: RuleDecision | null; requiresApproval: boolean | null; ctxHints?: { orderId?: number | null; rulesVersion?: number; ruleSetId?: string | null; attemptsToday?: number | null; daysSinceDelivery?: number | null; availableBalance?: number | null; totalDeducted?: number | null; totalCredited?: number | null; totalCredits?: number | null; totalSpentCredits?: number | null } | null; error?: string | null }
+
+interface CashbackSummary {
+	totalCredited: number | null;
+	totalDeducted: number | null;
+	availableBalance: number | null;
+}
 
 export default function AgentDashboard() {
 	const [searchMode, setSearchMode] = useState<'phone'|'orderName'>('phone');
@@ -22,7 +28,7 @@ export default function AgentDashboard() {
 	const [error, setError] = useState<string | null>(null);
 	// Tabs: 0 = Orders, 1 = Cashback
 	const [tab, setTab] = useState(0);
-	const [cashbackSummary, setCashbackSummary] = useState<{ totalCredits: number | null; totalSpentCredits: number | null } | null>(null);
+	const [cashbackSummary, setCashbackSummary] = useState<CashbackSummary | null>(null);
 	// Partial refund dialog state
 	const [partialDlg, setPartialDlg] = useState<{ open: boolean; order: OrderSummary | null }>({ open: false, order: null });
 	// Selection state per orderId -> per lineItemId -> { selected, quantity, amount }
@@ -67,6 +73,7 @@ export default function AgentDashboard() {
 		setPreview({});
 		setSelectionPreview({});
 		setSelections({});
+		setCashbackSummary(null);
 		try {
 			const params = searchMode === 'phone' ? { phone: query } : { orderName: query };
 			const res = await api.get<GetOrdersResponse>('/orders', { params });
@@ -77,14 +84,23 @@ export default function AgentDashboard() {
 				const body = searchMode === 'phone' ? { phone: query, items } : { items };
 				const p = await api.post<{ results: PreviewResult[] }>('/refund/preview/bulk', body);
 					const byId: Record<string, PreviewResult> = {};
-					let summary: { totalCredits: number | null; totalSpentCredits: number | null } | null = null;
+					let summary: CashbackSummary | null = null;
 				for (const r of p.data.results) {
 					if (r && r.orderId != null) byId[String(r.orderId)] = r;
-						// Capture global cashback from first result that has it
-						const tc = r?.ctxHints?.totalCredits;
-						const ts = r?.ctxHints?.totalSpentCredits;
-						if (!summary && (tc != null || ts != null)) {
-							summary = { totalCredits: tc ?? null, totalSpentCredits: ts ?? null };
+						// Cashback is customer-level data, so reuse the first preview
+						// result that contains it instead of treating it as order data.
+						const availableBalance = r?.ctxHints?.availableBalance ?? r?.ctxHints?.totalCredits;
+						const totalDeducted = r?.ctxHints?.totalDeducted ?? r?.ctxHints?.totalSpentCredits;
+						const totalCredited = r?.ctxHints?.totalCredited
+							?? (availableBalance != null && totalDeducted != null
+								? availableBalance + totalDeducted
+								: null);
+						if (!summary && (availableBalance != null || totalDeducted != null)) {
+							summary = {
+								totalCredited,
+								totalDeducted: totalDeducted ?? null,
+								availableBalance: availableBalance ?? null,
+							};
 						}
 				}
 				setPreview(byId);
@@ -414,14 +430,18 @@ export default function AgentDashboard() {
 					<CardHeader title="Cashback" subheader={query ? (searchMode === 'phone' ? `Customer phone: ${query}` : `Order name: ${query}`) : undefined} />
 					<CardContent>
 						{cashbackSummary ? (
-							<Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
+							<Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: 2 }}>
 								<Box sx={{ p: 2, border: '1px dashed', borderColor: 'divider', borderRadius: 1 }}>
-									<Typography variant="overline" color="text.secondary">Current balance</Typography>
-									<Typography variant="h6">{cashbackSummary.totalCredits ?? '—'}</Typography>
+									<Typography variant="overline" color="text.secondary">Total credited</Typography>
+									<Typography variant="h6">{cashbackSummary.totalCredited ?? '—'}</Typography>
 								</Box>
 								<Box sx={{ p: 2, border: '1px dashed', borderColor: 'divider', borderRadius: 1 }}>
-									<Typography variant="overline" color="text.secondary">Total spent</Typography>
-									<Typography variant="h6">{cashbackSummary.totalSpentCredits ?? '—'}</Typography>
+									<Typography variant="overline" color="text.secondary">Total deducted</Typography>
+									<Typography variant="h6">{cashbackSummary.totalDeducted ?? '—'}</Typography>
+								</Box>
+								<Box sx={{ p: 2, border: '1px dashed', borderColor: 'divider', borderRadius: 1 }}>
+									<Typography variant="overline" color="text.secondary">Available balance</Typography>
+									<Typography variant="h6">{cashbackSummary.availableBalance ?? '—'}</Typography>
 								</Box>
 							</Box>
 						) : (
@@ -625,4 +645,3 @@ export default function AgentDashboard() {
 		</>
 	);
 }
-

@@ -180,7 +180,9 @@ async function buildRefundContext(req, res, next) {
     const deliveredTs = deliveredAt ? new Date(deliveredAt).getTime() : null;
     const daysSinceDelivery = deliveredTs ? Math.floor((nowTs - deliveredTs) / 86_400_000) : null;
 
-    // Cashback credits (spent and total) via Flits API – optional and best-effort
+    // Cashback credits via Flits API – optional and best-effort.
+    // Flits `credits` is already the customer's remaining balance. Do not
+    // subtract `total_spent_credits` from it again.
     let totalSpentCreditsRaw = null;
     let totalSpentCredits = null;
     let totalCredits = null;
@@ -201,6 +203,19 @@ async function buildRefundContext(req, res, next) {
         totalCredits = null;
       }
     }
+
+    const availableBalance = Number.isFinite(totalCredits)
+      ? Math.abs(totalCredits) / 100
+      : null;
+    const totalDeducted = totalSpentCredits;
+    // Flits' balance endpoint does not provide a lifetime-earned field. This
+    // derived value reconciles the available balance and cumulative debits.
+    // If Flits later exposes a transaction ledger, prefer summing credits from
+    // that ledger so expiries and manual adjustments can be classified.
+    const totalCredited =
+      availableBalance != null && totalDeducted != null
+        ? availableBalance + totalDeducted
+        : null;
 
 
     // Build context object for the evaluator
@@ -232,9 +247,14 @@ async function buildRefundContext(req, res, next) {
         daysSinceDelivery,
         lifetimeRefundCount,
         customerKey,
-        totalSpentCredits, // normalized (abs/100) for display
+        availableBalance,
+        totalDeducted,
+        totalCredited,
+        // Backward-compatible aliases. New consumers should use the explicit
+        // fields above to avoid treating the balance as lifetime cashback.
+        totalSpentCredits, // alias of totalDeducted
         totalSpentCreditsRaw, // raw units from Flits (e.g., paise)
-        totalCredits: Math.abs(totalCredits)/100,
+        totalCredits: availableBalance, // alias of availableBalance
       },
       request: {
         lineItems: Array.isArray(lineItems) ? lineItems : []

@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+Cashback
+- Treat Flits `customer.credits` as the available balance rather than subtracting cumulative deductions from it again.
+- Expose explicit `availableBalance`, `totalDeducted`, and derived `totalCredited` preview fields while retaining the old field names as compatibility aliases.
+- Update the Cashback tab to show a reconciled three-field summary and clear stale cashback data between searches.
+
 ## 1.2.0 - 2025-10-02
 
 Frontend

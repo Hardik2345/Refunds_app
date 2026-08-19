@@ -66,8 +66,11 @@
           "ruleSetId": { "type": "string", "nullable": true },
           "attemptsToday": { "type": "integer", "nullable": true },
           "daysSinceDelivery": { "type": "integer", "nullable": true },
-          "totalCredits": { "type": "number", "nullable": true, "description": "Customer's total cashback credits from Flits (credits)" },
-          "totalSpentCredits": { "type": "number", "nullable": true, "description": "Normalized spent cashback credits = abs(raw)/100 for display" },
+          "availableBalance": { "type": "number", "nullable": true, "description": "Current available cashback balance from Flits, normalized as abs(customer.credits)/100" },
+          "totalDeducted": { "type": "number", "nullable": true, "description": "Cumulative cashback debits from Flits, normalized as abs(raw)/100" },
+          "totalCredited": { "type": "number", "nullable": true, "description": "Derived reconciliation value: availableBalance + totalDeducted" },
+          "totalCredits": { "type": "number", "nullable": true, "deprecated": true, "description": "Backward-compatible alias of availableBalance" },
+          "totalSpentCredits": { "type": "number", "nullable": true, "deprecated": true, "description": "Backward-compatible alias of totalDeducted" },
           "totalSpentCreditsRaw": { "type": "number", "nullable": true, "description": "Raw spent cashback credits from Flits (e.g., paise) used for policy checks" }
         }
       },

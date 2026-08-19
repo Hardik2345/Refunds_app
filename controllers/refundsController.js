@@ -903,6 +903,10 @@ exports.bulkPreviewRefunds = async (req, res) => {
         ruleSetId: fakeReq.ruleContext.ruleSetId,
         attemptsToday: fakeReq.ruleContext.meta?.attemptsToday,
         daysSinceDelivery: fakeReq.ruleContext.meta?.daysSinceDelivery,
+        availableBalance: fakeReq.ruleContext.meta?.availableBalance ?? null,
+        totalDeducted: fakeReq.ruleContext.meta?.totalDeducted ?? null,
+        totalCredited: fakeReq.ruleContext.meta?.totalCredited ?? null,
+        // Backward-compatible aliases for older clients.
         totalCredits: fakeReq.ruleContext.meta?.totalCredits ?? null,
         totalSpentCredits: fakeReq.ruleContext.meta?.totalSpentCredits ?? null,
         totalSpentCreditsRaw: fakeReq.ruleContext.meta?.totalSpentCreditsRaw ?? null
