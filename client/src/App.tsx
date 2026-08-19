@@ -1,6 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider, CssBaseline, Container, AppBar, Toolbar, Typography, Box } from '@mui/material';
-import { theme } from './theme';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Login from './pages/Login';
 import AgentDashboard from './pages/AgentDashboard';
 import ProtectedRoute from './auth/ProtectedRoute';
@@ -12,53 +10,78 @@ import AdminTenants from './pages/AdminTenants';
 import AdminUsers from './pages/AdminUsers';
 import AdminActivity from './pages/AdminActivity';
 import AdminMaintenance from './pages/AdminMaintenance';
-import { Link as RouterLink, useLocation } from 'react-router-dom';
-import { Link } from '@mui/material';
+import { Link as RouterLink } from 'react-router-dom';
 import UserMenu from './components/UserMenu';
+import { Box, InlineStack, Text } from '@shopify/polaris';
+import { motion, AnimatePresence } from 'framer-motion';
+import { PageTransition } from './components/PageTransition';
 
 export default function App() {
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <AuthProvider>
-        <BrowserRouter>
-          <AppBar
-            position="fixed"
-            color="transparent"
-            elevation={0}
-            sx={{
-              backdropFilter: 'saturate(180%) blur(6px)',
-              backgroundColor: 'rgba(255,255,255,0.8)',
-              borderBottom: '1px solid',
-              borderColor: 'divider',
-            }}
-          >
-            <Toolbar sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Box sx={{ display:'flex', alignItems:'center', gap: 2, flexGrow: 1 }}>
-                <Typography variant="h6" sx={{ fontWeight: 600, letterSpacing: 0.2 }}>
-                  Refunds Portal
-                </Typography>
-                <NavLinks />
-              </Box>
-              <HeaderRight />
-            </Toolbar>
-          </AppBar>
-          <Toolbar />
-          <Container maxWidth="lg" sx={{ py: 3 }}>
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/agent" element={<ProtectedRoute><AgentDashboard /></ProtectedRoute>} />
-              <Route path="/admin/rules" element={<ProtectedRoute><AdminRoute><AdminRules /></AdminRoute></ProtectedRoute>} />
-              <Route path="/admin/tenants" element={<ProtectedRoute><AdminRoute allowedRoles={["platform_admin"]}><AdminTenants /></AdminRoute></ProtectedRoute>} />
-              <Route path="/admin/users" element={<ProtectedRoute><AdminRoute><AdminUsers /></AdminRoute></ProtectedRoute>} />
-              <Route path="/admin/activity" element={<ProtectedRoute><AdminRoute allowedRoles={["platform_admin","super_admin"]}><AdminActivity /></AdminRoute></ProtectedRoute>} />
-              <Route path="/admin/maintenance" element={<ProtectedRoute><AdminRoute allowedRoles={["platform_admin"]}><AdminMaintenance /></AdminRoute></ProtectedRoute>} />
-              <Route path="/" element={<Navigate to="/agent" replace />} />
-            </Routes>
-          </Container>
-        </BrowserRouter>
-      </AuthProvider>
-    </ThemeProvider>
+    <AuthProvider>
+      <BrowserRouter>
+        <AppContent />
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}
+
+function AppContent() {
+  const location = useLocation();
+  return (
+    <>
+      <style>{`
+        .Polaris-Card {
+          transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+        }
+        .Polaris-Card:hover {
+          transform: translateY(-2px);
+          box-shadow: var(--p-shadow-300) !important;
+        }
+        .Polaris-Button {
+          transition: transform 0.1s ease !important;
+        }
+        .Polaris-Button:active {
+          transform: scale(0.98);
+        }
+      `}</style>
+      
+      {/* Header bar structure */}
+      <Box 
+        paddingInline="600" 
+        borderBlockEndWidth="100" 
+        borderColor="border" 
+        background="bg-surface"
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '64px' }}>
+          <Box>
+            <Text as="h2" variant="headingLg" fontWeight="semibold">
+              Refunds Portal
+            </Text>
+          </Box>
+          
+          <NavLinks />
+          
+          <HeaderRight />
+        </div>
+      </Box>
+
+      {/* Main Content Area */}
+      <Box paddingBlock="600" paddingInline="600" background="bg-surface-secondary" minHeight="calc(100vh - 65px)">
+        <AnimatePresence mode="wait">
+          <Routes location={location} key={location.pathname}>
+            <Route path="/login" element={<PageTransition><Login /></PageTransition>} />
+            <Route path="/agent" element={<ProtectedRoute><PageTransition><AgentDashboard /></PageTransition></ProtectedRoute>} />
+            <Route path="/admin/rules" element={<ProtectedRoute><AdminRoute><PageTransition><AdminRules /></PageTransition></AdminRoute></ProtectedRoute>} />
+            <Route path="/admin/tenants" element={<ProtectedRoute><AdminRoute allowedRoles={["platform_admin"]}><PageTransition><AdminTenants /></PageTransition></AdminRoute></ProtectedRoute>} />
+            <Route path="/admin/users" element={<ProtectedRoute><AdminRoute><PageTransition><AdminUsers /></PageTransition></AdminRoute></ProtectedRoute>} />
+            <Route path="/admin/activity" element={<ProtectedRoute><AdminRoute allowedRoles={["platform_admin","super_admin"]}><PageTransition><AdminActivity /></PageTransition></AdminRoute></ProtectedRoute>} />
+            <Route path="/admin/maintenance" element={<ProtectedRoute><AdminRoute allowedRoles={["platform_admin"]}><PageTransition><AdminMaintenance /></PageTransition></AdminRoute></ProtectedRoute>} />
+            <Route path="/" element={<Navigate to="/agent" replace />} />
+          </Routes>
+        </AnimatePresence>
+      </Box>
+    </>
   );
 }
 
@@ -67,14 +90,12 @@ function HeaderRight() {
   const roles = (user?.role ? [user.role] : (user as any)?.roles) || [];
   const isAdmin = roles.map((r: string) => r?.toLowerCase?.()).some((r: string) => ['platform_admin','user_admin'].includes(r));
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+    <InlineStack gap="500" align="center" blockAlign="center">
       {user && isAdmin && (
-        <Box sx={{ minWidth: 240 }}>
-          <TenantSelector />
-        </Box>
+        <TenantSelector />
       )}
       <UserMenu />
-    </Box>
+    </InlineStack>
   );
 }
 
@@ -90,49 +111,50 @@ function NavLinks() {
   const items: Array<{ to: string; label: string; show: boolean }> = [
     { to: '/agent', label: 'Agent', show: true },
     { to: '/admin/rules', label: 'Rules', show: true },
-    { to: '/admin/tenants', label: 'Tenants', show: canSeeTenantsLink },
     { to: '/admin/users', label: 'Users', show: true },
     { to: '/admin/activity', label: 'Activity', show: canSeeActivity },
-    { to: '/admin/maintenance', label: 'Maintenance', show: canSeeMaintenance },
   ];
+  // Add Tenants or Maintenance conditionally
+  if (canSeeTenantsLink) items.splice(2, 0, { to: '/admin/tenants', label: 'Tenants', show: true });
+  if (canSeeMaintenance) items.push({ to: '/admin/maintenance', label: 'Maintenance', show: true });
+
   return (
-    <Box sx={{ display:'flex', alignItems:'center', gap: 1.5 }}>
+    <InlineStack gap="600" align="center" blockAlign="stretch" wrap={false}>
       {items.filter(i => i.show).map((item) => {
         const active = pathname === item.to || pathname.startsWith(item.to + '/');
         return (
-          <Box key={item.to} sx={{ position: 'relative', pb: 1 }}>
-            <Link
-              component={RouterLink}
-              to={item.to}
-              underline="none"
-              aria-current={active ? 'page' : undefined}
-              color={active ? 'text.primary' : 'text.secondary'}
-              sx={{
-                fontWeight: active ? 700 : 500,
-                letterSpacing: 0.1,
-                px: 0.25,
-                borderRadius: 0.75,
-                transition: 'color .15s ease, background-color .15s ease',
-                '&:hover': { color: 'text.primary', backgroundColor: 'action.hover' },
+          <div key={item.to} style={{ position: 'relative', display: 'flex', alignItems: 'center', height: '64px', padding: '0 4px' }}>
+            <RouterLink 
+              to={item.to} 
+              style={{
+                textDecoration: 'none',
+                color: active ? 'var(--p-color-text)' : 'var(--p-color-text-subdued)',
+                fontWeight: active ? '600' : '500',
+                fontSize: '15px',
+                transition: 'color 0.2s ease',
               }}
             >
               {item.label}
-            </Link>
-            <Box
-              sx={{
-                position: 'absolute',
-                left: 0,
-                right: 0,
-                bottom: 0,
-                height: 2,
-                borderRadius: 1,
-                bgcolor: active ? 'primary.main' : 'transparent',
-                transition: 'background-color .2s ease',
-              }}
-            />
-          </Box>
+            </RouterLink>
+            {active && (
+              <motion.div 
+                layoutId="nav-underline"
+                style={{ 
+                  position: 'absolute', 
+                  bottom: 0, 
+                  left: 0, 
+                  right: 0, 
+                  height: '3px', 
+                  backgroundColor: '#008060', 
+                  borderTopLeftRadius: '3px', 
+                  borderTopRightRadius: '3px' 
+                }} 
+              />
+            )}
+          </div>
         );
       })}
-    </Box>
+    </InlineStack>
   );
 }
+

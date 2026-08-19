@@ -1,23 +1,29 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Button, Menu, MenuItem, Divider, Typography } from '@mui/material';
+import { useEffect, useState } from 'react';
+import { Button, Popover, ActionList, Text, InlineStack, Icon } from '@shopify/polaris';
+import { 
+  PersonFilledIcon, 
+  ShieldCheckMarkIcon, 
+  PersonIcon, 
+  ProfileIcon,
+  SearchIcon
+} from '@shopify/polaris-icons';
 import api, { setTenantHeader } from '../apiClient';
 import { useAuth } from '../auth/AuthContext';
 
 export default function UserMenu() {
   const { user, setUser, setSelectedTenantId } = useAuth();
   const [loading, setLoading] = useState<boolean>(!user);
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const open = useMemo(() => Boolean(anchorEl), [anchorEl]);
+  const [active, setActive] = useState(false);
+
+  const toggleActive = () => setActive((prev) => !prev);
 
   useEffect(() => {
     let mounted = true;
-    // Lazily check session so header reflects auth across routes
     if (!user && window.location.pathname !== '/login') {
       api.get('/users/me').then((res) => {
         if (!mounted) return;
         setUser(res.data?.data?.data || null);
       }).catch(() => {
-        // not logged in
       }).finally(() => {
         if (mounted) setLoading(false);
       });
@@ -31,7 +37,6 @@ export default function UserMenu() {
     try {
       await api.get('/users/logout');
     } catch {
-      // ignore errors on logout
     } finally {
       setUser(null);
       setSelectedTenantId(null);
@@ -45,14 +50,12 @@ export default function UserMenu() {
     try {
       const res = await api.delete('/users/deleteMe');
       if (res.status === 204) {
-        // Treat similar to logout
         setUser(null);
         setSelectedTenantId(null);
         setTenantHeader(null);
         window.location.href = '/login';
       }
     } catch (e) {
-      // best-effort; if the token is invalid we may already be logged out
       setUser(null);
       setSelectedTenantId(null);
       setTenantHeader(null);
@@ -61,56 +64,71 @@ export default function UserMenu() {
   };
 
   if (loading) {
-    return (
-      <Button size="small" variant="text" disabled sx={{ opacity: 0.6 }}>Loading…</Button>
-    );
+    return <Button variant="tertiary" disabled>Loading…</Button>;
   }
 
   if (!user) {
     return (
-      <Button size="small" variant="contained" color="primary" href="/login">
+      <Button variant="primary" url="/login">
         Login
       </Button>
     );
   }
 
-  const displayName = user.name || user.email || 'Account';
-  const role = (user as any).role || (Array.isArray((user as any).roles) ? (user as any).roles[0] : null);
+  const roleKey = (user as any).role || (Array.isArray((user as any).roles) ? (user as any).roles[0] : null);
+  
+  // Mapping roles to Names and Icons
+  const roleConfig: Record<string, { label: string; icon: any; color: string }> = {
+    platform_admin: { label: 'Platform Admin', icon: ShieldCheckMarkIcon, color: '#9c6ade' },
+    super_admin: { label: 'Super Admin', icon: PersonFilledIcon, color: '#008060' },
+    user_admin: { label: 'User Admin', icon: PersonIcon, color: '#458fff' },
+    agent: { label: 'Agent', icon: ProfileIcon, color: '#6d7175' }
+  };
+
+  const currentRole = roleConfig[roleKey] || { label: roleKey || 'User', icon: SearchIcon, color: '#6d7175' };
+
+  const activator = (
+    <div onClick={toggleActive} style={{ cursor: 'pointer' }}>
+      <InlineStack gap="200" align="center" blockAlign="center">
+        <div style={{ 
+          backgroundColor: currentRole.color, 
+          padding: '6px', 
+          borderRadius: '8px', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          color: 'white'
+        }}>
+          <Icon source={currentRole.icon} tone="inherit" />
+        </div>
+        <Text as="span" variant="bodyMd" fontWeight="semibold">
+          {currentRole.label}
+        </Text>
+      </InlineStack>
+    </div>
+  );
+
+  const actions = [
+    {
+      content: 'Deactivate account',
+      destructive: true,
+      onAction: handleDeactivate,
+    },
+    {
+      content: 'Logout',
+      onAction: handleLogout,
+    },
+  ];
 
   return (
-    <>
-      <Button
-        size="small"
-        variant="outlined"
-        onClick={(e) => setAnchorEl(e.currentTarget)}
-        aria-haspopup="menu"
-        aria-expanded={open ? 'true' : undefined}
-        sx={{ textTransform: 'none' }}
-      >
-        <Typography variant="body2" sx={{ fontWeight: 600, mr: role ? 0.75 : 0 }}>{displayName}</Typography>
-        {role && (
-          <Typography variant="caption" color="text.secondary">({String(role)})</Typography>
-        )}
-      </Button>
-      <Menu
-        anchorEl={anchorEl}
-        open={open}
-        onClose={() => setAnchorEl(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-      >
-        <MenuItem disabled>
-          <div>
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>{displayName}</Typography>
-            {role && <Typography variant="caption" color="text.secondary">Role: {String(role)}</Typography>}
-          </div>
-        </MenuItem>
-        <Divider />
-  {/* Removed Account and Settings entries per requirements */}
-        <MenuItem onClick={handleDeactivate} sx={{ color: 'warning.main' }}>Deactivate account</MenuItem>
-        <Divider />
-        <MenuItem onClick={handleLogout} sx={{ color: 'error.main' }}>Logout</MenuItem>
-      </Menu>
-    </>
+    <Popover
+      active={active}
+      activator={activator}
+      onClose={toggleActive}
+      autofocusTarget="none"
+    >
+      <ActionList items={actions} />
+    </Popover>
   );
 }
+
