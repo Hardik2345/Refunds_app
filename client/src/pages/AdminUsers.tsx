@@ -30,17 +30,24 @@ export default function AdminUsers() {
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [userSearch, setUserSearch] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState('');
+  const [userShopFilter, setUserShopFilter] = useState('');
+  const [userStatusFilter, setUserStatusFilter] = useState<'active' | 'inactive'>('active');
   
   const roleOfCurrent = String((user as any)?.role || '').toLowerCase();
   const canManage = user && (user as any).role && ['platform_admin', 'super_admin', 'user_admin'].includes(roleOfCurrent);
   const isSuperAdmin = roleOfCurrent === 'super_admin';
   const currentUserId = (user as any)?._id || '';
-  const [tab, setTab] = useState<'active' | 'inactive'>('active');
-
-  const loadUsers = async () => {
+  const loadUsers = async (filters = {
+    search: userSearch.trim(),
+    role: userRoleFilter,
+    storeId: userShopFilter,
+    status: userStatusFilter
+  }) => {
     try {
       setLoading(true);
-      const res = await api.get('/users', { params: { fields: 'name,email,role,storeId,isActive', status: tab } });
+      const res = await api.get('/users', { params: { fields: 'name,email,role,storeId,isActive', ...filters } });
       setUsers(res.data?.data?.data || []);
     } catch { /* ignore */ } finally { setLoading(false); }
   };
@@ -66,13 +73,12 @@ export default function AdminUsers() {
   };
 
   useEffect(() => {
-    if (isSuperAdmin && tab !== 'active') setTab('active');
     if (canManage) {
       loadUsers();
       if (!isSuperAdmin) loadTenants();
       setAuditPage(1); loadAudits(1);
     }
-  }, [canManage, isSuperAdmin, tab]);
+  }, [canManage, isSuperAdmin]);
 
   useEffect(() => { if (role === 'platform_admin') setStoreId(''); }, [role]);
 
@@ -115,6 +121,26 @@ export default function AdminUsers() {
   ];
 
   const tenantOptions = tenants.map((t) => ({ label: t.name, value: t._id }));
+  const userRoleFilterOptions = [
+    { label: 'All roles', value: '' },
+    { label: 'Refund Agent', value: 'refund_agent' },
+    { label: 'Platform Admin', value: 'platform_admin' },
+    { label: 'Super Admin', value: 'super_admin' },
+    { label: 'User Admin', value: 'user_admin' }
+  ];
+  const userStatusFilterOptions = [
+    { label: 'Active users', value: 'active' },
+    { label: 'Inactive users', value: 'inactive' }
+  ];
+
+  const applyUserFilters = () => loadUsers();
+  const clearUserFilters = () => {
+    setUserSearch('');
+    setUserRoleFilter('');
+    setUserShopFilter('');
+    setUserStatusFilter('active');
+    loadUsers({ search: '', role: '', storeId: '', status: 'active' });
+  };
 
   return (
     <Box>
@@ -178,10 +204,41 @@ export default function AdminUsers() {
                 </div>
               </InlineStack>
             </Box>
-            
-            <Box padding="400">
+
+            <Box padding="400" borderBlockEndWidth="100" borderColor="border">
               <BlockStack gap="300">
-                {users.map((u: any) => {
+                <TextField
+                  label="Search users"
+                  labelHidden
+                  placeholder="Search name or email"
+                  value={userSearch}
+                  onChange={setUserSearch}
+                  autoComplete="off"
+                  clearButton
+                  onClearButtonClick={() => setUserSearch('')}
+                />
+                <InlineGrid columns={{ xs: 1, sm: 3 }} gap="200">
+                  <CustomSelect options={userRoleFilterOptions} value={userRoleFilter} onChange={setUserRoleFilter} />
+                  <CustomSelect
+                    options={[{ label: 'All shops', value: '' }, ...tenantOptions]}
+                    value={userShopFilter}
+                    onChange={setUserShopFilter}
+                    disabled={loadingTenants || isSuperAdmin}
+                    placeholder="All shops"
+                  />
+                  <CustomSelect options={userStatusFilterOptions} value={userStatusFilter} onChange={(value) => setUserStatusFilter(value as 'active' | 'inactive')} />
+                </InlineGrid>
+                <InlineStack gap="200">
+                  <Button onClick={applyUserFilters} loading={loading}>Apply filters</Button>
+                  <Button onClick={clearUserFilters} disabled={loading}>Clear</Button>
+                </InlineStack>
+              </BlockStack>
+            </Box>
+
+            <div style={{ maxHeight: '480px', overflowY: 'auto' }}>
+              <Box padding="400">
+                <BlockStack gap="300">
+                  {users.map((u: any) => {
                   const id = u.id || u._id;
                   const isSelf = id === currentUserId;
                   const display = u.name || u.email || id;
@@ -221,9 +278,10 @@ export default function AdminUsers() {
                       </InlineGrid>
                     </Box>
                   );
-                })}
-              </BlockStack>
-            </Box>
+                  })}
+                </BlockStack>
+              </Box>
+            </div>
           </Card>
 
           {/* Audit Logs */}
@@ -268,4 +326,3 @@ export default function AdminUsers() {
     </Box>
   );
 }
-

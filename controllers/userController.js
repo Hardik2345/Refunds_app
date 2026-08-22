@@ -182,6 +182,9 @@ exports.getAllUsers = catchAsync(async (req, res, next) => {
   const role = req.user?.role;
   let match = {};
   const status = String(req.query?.status || '').toLowerCase(); // 'active' | 'inactive' | ''
+  const requestedRole = String(req.query?.role || '').toLowerCase();
+  const requestedStoreId = String(req.query?.storeId || '');
+  const search = String(req.query?.search || '').trim();
   if (role === 'super_admin') {
     const tenantId = req.user?.storeId || req.user?.tenantId || null;
     if (!tenantId) {
@@ -205,6 +208,20 @@ exports.getAllUsers = catchAsync(async (req, res, next) => {
     pipeline.push({ $match: { isActive: false } });
   } else if (status === 'active') {
     pipeline.push({ $match: { $or: [ { isActive: { $exists: false } }, { isActive: { $ne: false } } ] } });
+  }
+  if (['refund_agent', 'platform_admin', 'super_admin', 'user_admin'].includes(requestedRole)) {
+    pipeline.push({ $match: { role: requestedRole } });
+  }
+  if (requestedStoreId) {
+    if (!mongoose.Types.ObjectId.isValid(requestedStoreId)) {
+      return res.status(200).json({ status: 'success', results: 0, data: { data: [] } });
+    }
+    pipeline.push({ $match: { storeId: new mongoose.Types.ObjectId(requestedStoreId) } });
+  }
+  if (search) {
+    const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const searchPattern = new RegExp(escapedSearch, 'i');
+    pipeline.push({ $match: { $or: [{ name: searchPattern }, { email: searchPattern }] } });
   }
   // Sort newest first by createdAt if present, else by _id
   pipeline.push({ $sort: { createdAt: -1, _id: -1 } });
