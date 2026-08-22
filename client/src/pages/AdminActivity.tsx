@@ -37,14 +37,19 @@ type ListResponse<T> = {
   data: { data: T[] };
 };
 
+type Tenant = { _id: string; name: string; shopDomain?: string };
+
 export default function AdminActivity() {
-  useAuth();
+  const { selectedTenantId, user } = useAuth();
+  const canSwitchShop = String(user?.role || '').toLowerCase() === 'platform_admin';
   
   const [day, setDay] = useState<string>('');
   const [phone, setPhone] = useState<string>('');
-  const [debouncedPhone, setDebouncedPhone] = useState<string>('');
   const [shop, setShop] = useState<string>('');
   const [agent, setAgent] = useState<string>('');
+  const [shops, setShops] = useState<Tenant[]>([]);
+  const [agents, setAgents] = useState<User[]>([]);
+  const [loadingFilterOptions, setLoadingFilterOptions] = useState(false);
   
   const [stats, setStats] = useState<RefundStat[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -52,33 +57,44 @@ export default function AdminActivity() {
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
 
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setDebouncedPhone(phone.trim());
-    }, 400);
-    return () => clearTimeout(t);
-  }, [phone]);
-
   const queryParams = useMemo(() => {
     const qp: Record<string, any> = {
-      page,
       limit,
       sort: '-lastRefundAt',
       fields: 'user,tenant,customer,totalCount,successCount,lastIp,lastOutcome,lastErrorCode,lastRefundAt'
     };
     if (day) qp.day = day;
-    if (debouncedPhone) qp.phone = debouncedPhone;
+    if (phone.trim()) qp.phone = phone.trim();
+    if (agent) qp.user = agent;
     return qp;
-  }, [day, debouncedPhone, page, limit]);
+  }, [day, phone, agent, limit]);
 
-  async function loadStats() {
+  const shopOptions = useMemo(() => canSwitchShop ? [
+    { label: 'All shops', value: 'ALL' },
+    ...shops.map((tenant) => ({ label: tenant.name, value: tenant._id }))
+  ] : [{ label: 'Assigned shop', value: '' }], [canSwitchShop, shops]);
+
+  const agentOptions = useMemo(() => [
+    { label: 'All agents', value: '' },
+    ...agents.map((person) => ({ label: person.name || person.email || person._id, value: person._id }))
+  ], [agents]);
+
+  async function loadStats(
+    requestedPage = page,
+    filters = queryParams,
+    tenantId = shop || selectedTenantId || (canSwitchShop ? 'ALL' : undefined)
+  ) {
     setLoading(true);
     setError(null);
     setStats(null);
     try {
-      const res = await api.get<ListResponse<RefundStat>>('/refund-stats', { params: queryParams });
+      const res = await api.get<ListResponse<RefundStat>>('/refund-stats', {
+        params: { ...filters, page: requestedPage },
+        headers: tenantId ? { 'x-tenant-id': tenantId } : undefined
+      });
       const list = res.data.data.data || [];
       setStats(list);
+      setPage(requestedPage);
     } catch (err: any) {
       const code = err?.response?.status;
       if (code === 403) setError("You don't have permission to view activity logs.");
@@ -89,30 +105,61 @@ export default function AdminActivity() {
   }
 
   useEffect(() => {
-    loadStats();
+    loadStats(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    setPage(1);
-    loadStats();
+    let mounted = true;
+    async function loadFilterOptions() {
+      setLoadingFilterOptions(true);
+      try {
+        const [tenantResult, userResult] = await Promise.allSettled([
+          api.get<ListResponse<Tenant>>('/tenants', { params: { limit: 200, fields: 'name,shopDomain' } }),
+          api.get<ListResponse<User>>('/users', { params: { limit: 200, fields: 'name,email,role' } })
+        ]);
+        if (!mounted) return;
+        setShops(tenantResult.status === 'fulfilled' ? tenantResult.value.data?.data?.data || [] : []);
+        setAgents(userResult.status === 'fulfilled'
+          ? (userResult.value.data?.data?.data || []).filter((person) => person.role === 'refund_agent')
+          : []);
+      } catch {
+        if (!mounted) return;
+        setShops([]);
+        setAgents([]);
+      } finally {
+        if (mounted) setLoadingFilterOptions(false);
+      }
+    }
+    loadFilterOptions();
+    return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedPhone]);
+  }, []);
 
   function applyFilters() {
+    loadStats(1);
+  }
+
+  function clearFilters() {
+    setDay('');
+    setPhone('');
+    setShop('');
+    setAgent('');
     setPage(1);
-    loadStats();
+    loadStats(1, {
+      limit,
+      sort: '-lastRefundAt',
+      fields: 'user,tenant,customer,totalCount,successCount,lastIp,lastOutcome,lastErrorCode,lastRefundAt'
+    }, selectedTenantId || (canSwitchShop ? 'ALL' : undefined));
   }
 
   function onPrev() {
     if (page > 1) {
-      setPage((p) => p - 1);
-      setTimeout(loadStats, 0);
+      loadStats(page - 1);
     }
   }
   function onNext() {
-    setPage((p) => p + 1);
-    setTimeout(loadStats, 0);
+    loadStats(page + 1);
   }
 
   return (
@@ -146,30 +193,34 @@ export default function AdminActivity() {
                   />
                 </Box>
                 <Box minWidth="150px">
-                  <CustomSelect
-                    options={[{ label: 'Select Date', value: '' }]}
+                  <TextField
+                    label="Select date"
+                    labelHidden
+                    type="date"
                     value={day}
                     onChange={setDay}
-                    disabled
+                    autoComplete="off"
                   />
                 </Box>
                 <Box minWidth="150px">
                   <CustomSelect
-                    options={[{ label: 'Select Shop', value: '' }]}
+                    options={shopOptions}
                     value={shop}
                     onChange={setShop}
-                    disabled
+                    disabled={loadingFilterOptions || !canSwitchShop}
+                    placeholder="Select Shop"
                   />
                 </Box>
                 <Box minWidth="150px">
                   <CustomSelect
-                    options={[{ label: 'Agent', value: '' }]}
+                    options={agentOptions}
                     value={agent}
                     onChange={setAgent}
-                    disabled
+                    disabled={loadingFilterOptions}
+                    placeholder="Agent"
                   />
                 </Box>
-                <Button icon={FilterIcon} onClick={() => {}} disabled />
+                <Button icon={FilterIcon} onClick={clearFilters} disabled={loading} accessibilityLabel="Clear filters" />
                 <Button onClick={applyFilters} disabled={loading}>Search</Button>
               </InlineStack>
             </Box>
@@ -248,4 +299,3 @@ export default function AdminActivity() {
     </Box>
   );
 }
-
