@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Box, Card, Text, BlockStack, InlineGrid, InlineStack, TextField, Button, Banner, IndexTable, Badge, ButtonGroup, Icon } from '@shopify/polaris';
 import { CustomSelect } from '../components/CustomSelect';
 import { EditIcon, DeleteIcon, PersonIcon } from '@shopify/polaris-icons';
@@ -34,6 +34,8 @@ export default function AdminUsers() {
   const [userRoleFilter, setUserRoleFilter] = useState('');
   const [userShopFilter, setUserShopFilter] = useState('');
   const [userStatusFilter, setUserStatusFilter] = useState<'active' | 'inactive'>('active');
+  const hasInitializedUserSearch = useRef(false);
+  const suppressNextUserSearch = useRef(false);
   
   const roleOfCurrent = String((user as any)?.role || '').toLowerCase();
   const canManage = user && (user as any).role && ['platform_admin', 'super_admin', 'user_admin'].includes(roleOfCurrent);
@@ -81,6 +83,30 @@ export default function AdminUsers() {
   }, [canManage, isSuperAdmin]);
 
   useEffect(() => { if (role === 'platform_admin') setStoreId(''); }, [role]);
+
+  useEffect(() => {
+    if (!canManage) return;
+    if (!hasInitializedUserSearch.current) {
+      hasInitializedUserSearch.current = true;
+      return;
+    }
+    if (suppressNextUserSearch.current) {
+      suppressNextUserSearch.current = false;
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      loadUsers({
+        search: userSearch.trim(),
+        role: userRoleFilter,
+        storeId: userShopFilter,
+        status: userStatusFilter
+      });
+    }, 400);
+    return () => window.clearTimeout(timer);
+    // Search is intentionally the only automatic filter; the remaining filters apply on button click.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userSearch, canManage]);
 
   const onSubmit = async (e: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -135,6 +161,7 @@ export default function AdminUsers() {
 
   const applyUserFilters = () => loadUsers();
   const clearUserFilters = () => {
+    suppressNextUserSearch.current = true;
     setUserSearch('');
     setUserRoleFilter('');
     setUserShopFilter('');
