@@ -13,6 +13,7 @@ const AttemptSchema = new Schema({
   httpCode:   { type: Number, default: null },      // e.g., 403 from rules, 5xx from Shopify
   errorCode:  { type: String, default: null },      // compact reason: ECONNRESET, RATE_LIMIT, POLICY_DENIED, etc.
   errorMsg:   { type: String, default: null },      // truncated (keep to <= 500 chars)
+  note:       { type: String, default: null },      // agent-supplied refund note (<= 500 chars)
   attemptNo:  { type: Number, default: 1 },         // retry number for this action
   backoffMs:  { type: Number, default: 0 },         // chosen backoff for *next* attempt
   // Actor who performed this attempt

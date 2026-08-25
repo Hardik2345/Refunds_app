@@ -7,6 +7,18 @@ const { shopifyApi, LATEST_API_VERSION } = require("@shopify/shopify-api");
 const { buildRefundContext, evaluateRefundRules } = require("../middlewares/rules");
 const { appendOrderTags } = require("../utils/appendOrderTags");
 
+// 🔹 Utility: Normalize an agent-supplied refund note
+// Trimmed and length-capped so we never push an unbounded blob to Shopify or
+// into the RefundStat attempts trail. Empty/whitespace-only becomes null so
+// callers can fall back to their default note text.
+const MAX_NOTE_LENGTH = 500;
+const normalizeNote = (raw) => {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, MAX_NOTE_LENGTH);
+};
+
 // 🔹 Utility: Parse Shopify link headers for pagination
 const parseLinkHeader = (linkHeader) => {
   if (!linkHeader) return { next: null };
@@ -405,7 +417,7 @@ exports.refundOrderByPhone = async (req, res) => {
           phone: req.body.phone || null,
           orderId: req.body.orderId || null,
           amount: Number(req.body.amount),
-          note: req.body.note || null
+          note: normalizeNote(req.body.note)
         },
         ruleDecision: res.locals.ruleDecision,
         context: req.ruleContext
@@ -420,7 +432,7 @@ exports.refundOrderByPhone = async (req, res) => {
 
     const tenant = req.tenant;
   const { phone, orderId, lineItems } = req.body;
-  const note = req.body.note || null;
+  const note = normalizeNote(req.body.note);
 
     // --- Resolve target order by orderId (preferred) or by phone ---
     let targetOrder = null;
@@ -644,7 +656,8 @@ exports.approvePendingRefund = async (req, res) => {
       return res.status(404).json({ error: 'Pending refund not found or not pending' });
     }
 
-  const { phone, orderId, lineItems, note } = pending.payload;
+  const { phone, orderId, lineItems } = pending.payload;
+  const note = normalizeNote(pending.payload?.note);
 
     // --- Fetch target order again (fresh check) ---
     const orders = await getOrdersByPhone(tenant, phone);
@@ -791,6 +804,7 @@ exports.approvePendingRefund = async (req, res) => {
                   attemptNo: 1,
                   backoffMs: 0,
                   actor: req.user._id,
+                  note: note || null,
                   orderId: String(targetOrder.id),
                   amount: Array.isArray(lineItems) && lineItems.length > 0 ? lineItems.reduce((sum, i) => sum + Number(i.amount || 0), 0) : Number(targetOrder.total_price || 0),
                   partial: Array.isArray(lineItems) && lineItems.length > 0,

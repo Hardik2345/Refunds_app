@@ -12,6 +12,20 @@ import {
 	type PreviewResult,
 } from '../agent/AgentSearchContext';
 
+// Keep in sync with MAX_NOTE_LENGTH in controllers/refundsController.js — the
+// backend trims and truncates to this, so cap input here rather than silently
+// dropping characters server-side.
+const NOTE_MAX_LENGTH = 500;
+
+const emptyConfirm = {
+	open: false,
+	type: null,
+	orderId: null,
+	amountLabel: '',
+	customerName: '',
+	note: '',
+} as const;
+
 interface GetOrdersResponse { orders: OrderSummary[]; nextPageInfo?: string | null }
 
 interface BulkPreviewResponse {
@@ -54,7 +68,7 @@ export default function AgentDashboard() {
 		amountLabel: string;
 		customerName: string;
 		note?: string;
-	}>({ open: false, type: null, orderId: null, amountLabel: '', customerName: '', note: '' });
+	}>({ ...emptyConfirm });
 	// Confirm action loading state
 	const [confirmLoading, setConfirmLoading] = useState(false);
 
@@ -215,7 +229,7 @@ export default function AgentDashboard() {
 
 	function openConfirmFull(order: OrderSummary) {
 		const amountLabel = order.current_subtotal_price ? `₹${Number(parseFloat(order.current_subtotal_price)).toFixed(2)}` : 'N/A';
-		setConfirm(prev => ({ ...prev, open: true, type: 'full', orderId: order.id, amountLabel, customerName: customerNameFor(order), note: prev.note ?? '' }));
+		setConfirm({ ...emptyConfirm, open: true, type: 'full', orderId: order.id, amountLabel, customerName: customerNameFor(order) });
 	}
 
 	function computePartialTotal(orderId: number) {
@@ -236,7 +250,7 @@ export default function AgentDashboard() {
 			return;
 		}
 		const amountLabel = `₹${total.toFixed(2)}`;
-		setConfirm(prev => ({ ...prev, open: true, type: 'partial', orderId: order.id, amountLabel, customerName: customerNameFor(order), note: prev.note ?? '' }));
+		setConfirm({ ...emptyConfirm, open: true, type: 'partial', orderId: order.id, amountLabel, customerName: customerNameFor(order) });
 	}
 
 	async function onConfirmProceed() {
@@ -250,12 +264,12 @@ export default function AgentDashboard() {
 				}
 			} finally {
 				setConfirmLoading(false);
-				setConfirm({ open: false, type: null, orderId: null, amountLabel: '', customerName: '' });
+				setConfirm({ ...emptyConfirm });
 			}
 	}
 
 	function onConfirmCancel() {
-		setConfirm({ open: false, type: null, orderId: null, amountLabel: '', customerName: '' });
+		setConfirm({ ...emptyConfirm });
 	}
 
 	// Removed preview selection flow per UX update
@@ -513,6 +527,19 @@ export default function AgentDashboard() {
           <Box paddingBlockStart="200">
             <Text as="p" tone="subdued">Customer: {confirm.customerName}</Text>
             <Text as="p" tone="subdued">Amount: {confirm.amountLabel}</Text>
+          </Box>
+          <Box paddingBlockStart="400">
+            <TextField
+              label="Note (optional)"
+              placeholder="Why is this refund being issued?"
+              multiline={3}
+              maxLength={NOTE_MAX_LENGTH}
+              showCharacterCount
+              autoComplete="off"
+              value={confirm.note ?? ''}
+              onChange={(v) => setConfirm(prev => ({ ...prev, note: v }))}
+              helpText="Saved on the refund in Shopify. Visible to your team, not to the customer."
+            />
           </Box>
         </Modal.Section>
       </Modal>
