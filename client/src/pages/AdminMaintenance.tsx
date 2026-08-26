@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Box, Card, Text, BlockStack, InlineGrid, InlineStack, TextField, Button, Banner } from '@shopify/polaris';
 import api from '../apiClient';
 import { useAuth } from '../auth/AuthContext';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 
 export default function AdminMaintenance() {
   const { user } = useAuth();
@@ -14,6 +15,7 @@ export default function AdminMaintenance() {
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [loadingRefund, setLoadingRefund] = useState(false);
   const [msg, setMsg] = useState<{ type: 'success'|'error'|'warning', text: string }|null>(null);
+  const [pending, setPending] = useState<{ run: () => Promise<void>, label: string }|null>(null);
 
   useEffect(() => {
     if (!isPlatformAdmin) {
@@ -58,9 +60,17 @@ export default function AdminMaintenance() {
     }
   }
 
+  // Deletions here are irreversible, so they always go through our own
+  // confirmation modal rather than the browser's native confirm dialog.
   function confirmAnd(fn: () => Promise<void>, label: string) {
-    if (!window.confirm(`Are you sure you want to delete ${label}? This action cannot be undone.`)) return;
-    fn();
+    setPending({ run: fn, label });
+  }
+
+  function runPending() {
+    if (!pending) return;
+    const { run } = pending;
+    setPending(null);
+    run();
   }
 
   return (
@@ -134,6 +144,16 @@ export default function AdminMaintenance() {
           </BlockStack>
         </Card>
       </InlineGrid>
+
+      <ConfirmDialog
+        open={!!pending}
+        title="Delete logs"
+        message={`Are you sure you want to delete ${pending?.label ?? 'these logs'}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        destructive
+        onConfirm={runPending}
+        onCancel={() => setPending(null)}
+      />
     </Box>
   );
 }

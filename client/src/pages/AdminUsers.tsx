@@ -4,6 +4,7 @@ import { CustomSelect } from '../components/CustomSelect';
 import { EditIcon, DeleteIcon, PersonIcon } from '@shopify/polaris-icons';
 import api from '../apiClient';
 import { useAuth } from '../auth/AuthContext';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 
 type Role = 'refund_agent' | 'platform_admin' | 'super_admin' | 'user_admin';
 type Tenant = { _id: string; name: string; shopDomain?: string };
@@ -13,6 +14,7 @@ export default function AdminUsers() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; display: string } | null>(null);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loadingTenants, setLoadingTenants] = useState<boolean>(false);
   const [audits, setAudits] = useState<any[]>([]);
@@ -130,14 +132,19 @@ export default function AdminUsers() {
     } catch (e: any) { setMsg({ type: 'error', text: e?.response?.data?.message || 'Failed to create user' }); } finally { setSubmitting(false); }
   };
 
-  const onDeleteUser = async (id: string, display: string) => {
+  const askDeleteUser = (id: string, display: string) => {
     if (!canManage || !id) return;
-    if (!window.confirm(`Delete user ${display}? This will deactivate their account.`)) return;
+    setDeleteTarget({ id, display });
+  };
+
+  const onDeleteUser = async () => {
+    if (!deleteTarget) return;
+    const { id, display } = deleteTarget;
     setDeletingId(id); setMsg(null);
     try {
       await api.delete(`/users/${id}`);
       setMsg({ type: 'success', text: `User ${display} deleted.` }); loadUsers(); loadAudits();
-    } catch (e: any) { setMsg({ type: 'error', text: 'Failed to delete user' }); } finally { setDeletingId(null); }
+    } catch { setMsg({ type: 'error', text: 'Failed to delete user' }); } finally { setDeletingId(null); setDeleteTarget(null); }
   };
 
   const roleOptions = [
@@ -299,7 +306,7 @@ export default function AdminUsers() {
                         <InlineStack align="end" gap="200" blockAlign="center">
                           <ButtonGroup>
                             <Button icon={EditIcon} variant="tertiary" onClick={() => {}} disabled />
-                             <Button icon={DeleteIcon} variant="tertiary" onClick={() => onDeleteUser(id, display)} disabled={isSelf || !canManage} loading={deletingId === id} />
+                             <Button icon={DeleteIcon} variant="tertiary" onClick={() => askDeleteUser(id, display)} disabled={isSelf || !canManage} loading={deletingId === id} />
                           </ButtonGroup>
                         </InlineStack>
                       </InlineGrid>
@@ -350,6 +357,17 @@ export default function AdminUsers() {
           </Card>
         </BlockStack>
       </InlineGrid>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete user"
+        message={`Delete user ${deleteTarget?.display ?? ''}? This will deactivate their account.`}
+        confirmLabel="Delete"
+        destructive
+        loading={!!deletingId}
+        onConfirm={onDeleteUser}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </Box>
   );
 }

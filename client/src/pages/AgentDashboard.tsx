@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Page, Layout, Card, Text, TextField, InlineStack, Badge, Button, IndexTable, Modal, Box, Checkbox, BlockStack, Tooltip, UnstyledButton } from '@shopify/polaris';
+import { toast } from 'sonner';
 import { CustomSelect } from '../components/CustomSelect';
 import { OrderTimelineModal } from '../components/OrderTimelineModal';
 import { FilterIcon } from '@shopify/polaris-icons';
@@ -144,14 +145,14 @@ export default function AgentDashboard() {
 			const payload = { ...payloadBase, note: confirm.note || undefined };
 			const res = await api.post('/refund', payload);
 			if (res.status === 200) {
-				alert('Refund executed successfully');
+				toast.success('Refund executed successfully');
 			} else if (res.status === 202) {
 				const pendingId = (res as any).data?.pendingId;
-				alert(`Approval required. PendingId: ${pendingId}`);
+				toast.info('Approval required', { description: `Pending ID: ${pendingId}` });
 			}
 		} catch (err: any) {
 			const msg = err?.response?.data?.error || 'Refund failed';
-			alert(msg);
+			toast.error(msg);
 		}
 	}
 
@@ -257,7 +258,7 @@ export default function AgentDashboard() {
 	function openConfirmPartial(order: OrderSummary) {
 		const total = computePartialTotal(order.id);
 		if (!Number.isFinite(total) || total <= 0) {
-			alert('Select at least one line item with a valid amount');
+			toast.error('Select at least one line item with a valid amount');
 			return;
 		}
 		const amountLabel = `₹${total.toFixed(2)}`;
@@ -289,19 +290,19 @@ export default function AgentDashboard() {
 		try {
 			const payload = { ...buildPartialPayload(orderId), note: confirm.note || undefined } as any;
 			if (!payload.lineItems.length) {
-				alert('Select at least one line item');
+				toast.error('Select at least one line item');
 				return;
 			}
 			const res = await api.post('/refund', payload);
 			if (res.status === 200) {
-				alert('Partial refund executed successfully');
+				toast.success('Partial refund executed successfully');
 			} else if (res.status === 202) {
 				const pendingId = (res as any).data?.pendingId;
-				alert(`Approval required. PendingId: ${pendingId}`);
+				toast.info('Approval required', { description: `Pending ID: ${pendingId}` });
 			}
 		} catch (err: any) {
 			const msg = err?.response?.data?.error || 'Partial refund failed';
-			alert(msg);
+			toast.error(msg);
 		}
 	}
 

@@ -9,11 +9,14 @@ import {
 } from '@shopify/polaris-icons';
 import api, { setTenantHeader } from '../apiClient';
 import { useAuth } from '../auth/AuthContext';
+import { ConfirmDialog } from './ConfirmDialog';
 
 export default function UserMenu() {
   const { user, setUser, setSelectedTenantId } = useAuth();
   const [loading, setLoading] = useState<boolean>(!user);
   const [active, setActive] = useState(false);
+  const [deactivateOpen, setDeactivateOpen] = useState(false);
+  const [deactivating, setDeactivating] = useState(false);
 
   const toggleActive = () => setActive((prev) => !prev);
 
@@ -46,7 +49,7 @@ export default function UserMenu() {
   };
 
   const handleDeactivate = async () => {
-    if (!window.confirm('Deactivate your account? This will disable access until an admin reactivates it.')) return;
+    setDeactivating(true);
     try {
       const res = await api.delete('/users/deleteMe');
       if (res.status === 204) {
@@ -55,11 +58,14 @@ export default function UserMenu() {
         setTenantHeader(null);
         window.location.href = '/login';
       }
-    } catch (e) {
+    } catch {
       setUser(null);
       setSelectedTenantId(null);
       setTenantHeader(null);
       window.location.href = '/login';
+    } finally {
+      setDeactivating(false);
+      setDeactivateOpen(false);
     }
   };
 
@@ -112,7 +118,7 @@ export default function UserMenu() {
     {
       content: 'Deactivate account',
       destructive: true,
-      onAction: handleDeactivate,
+      onAction: () => { setActive(false); setDeactivateOpen(true); },
     },
     {
       content: 'Logout',
@@ -121,14 +127,27 @@ export default function UserMenu() {
   ];
 
   return (
-    <Popover
-      active={active}
-      activator={activator}
-      onClose={toggleActive}
-      autofocusTarget="none"
-    >
-      <ActionList items={actions} />
-    </Popover>
+    <>
+      <Popover
+        active={active}
+        activator={activator}
+        onClose={toggleActive}
+        autofocusTarget="none"
+      >
+        <ActionList items={actions} />
+      </Popover>
+
+      <ConfirmDialog
+        open={deactivateOpen}
+        title="Deactivate account"
+        message="Deactivate your account? This will disable access until an admin reactivates it."
+        confirmLabel="Deactivate"
+        destructive
+        loading={deactivating}
+        onConfirm={handleDeactivate}
+        onCancel={() => setDeactivateOpen(false)}
+      />
+    </>
   );
 }
 
