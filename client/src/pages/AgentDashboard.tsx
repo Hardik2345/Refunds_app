@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Page, Layout, Card, Text, TextField, InlineStack, Badge, Button, IndexTable, Modal, Box, Checkbox, BlockStack, Tooltip } from '@shopify/polaris';
+import { Page, Layout, Card, Text, TextField, InlineStack, Badge, Button, IndexTable, Modal, Box, Checkbox, BlockStack, Tooltip, UnstyledButton } from '@shopify/polaris';
 import { CustomSelect } from '../components/CustomSelect';
+import { OrderTimelineModal } from '../components/OrderTimelineModal';
 import { FilterIcon } from '@shopify/polaris-icons';
 import api from '../apiClient';
 import {
@@ -58,6 +59,8 @@ export default function AgentDashboard() {
 	const [error, setError] = useState<string | null>(null);
 	// Partial refund dialog state
 	const [partialDlg, setPartialDlg] = useState<{ open: boolean; order: OrderSummary | null }>({ open: false, order: null });
+	// Shopify order timeline dialog state
+	const [timelineDlg, setTimelineDlg] = useState<{ open: boolean; order: OrderSummary | null }>({ open: false, order: null });
 	// Selection state per orderId -> per lineItemId -> { selected, quantity, amount }
 	const [selections, setSelections] = useState<Record<number, Record<number, { selected: boolean; quantity: number; amount: string }>>>({});
 	// Confirmation dialog state
@@ -158,6 +161,14 @@ export default function AgentDashboard() {
 
 	function closePartialDialog() {
 		setPartialDlg({ open: false, order: null });
+	}
+
+	function openTimelineDialog(order: OrderSummary) {
+		setTimelineDlg({ open: true, order });
+	}
+
+	function closeTimelineDialog() {
+		setTimelineDlg({ open: false, order: null });
 	}
 
 	function unitPrice(li: OrderLineItem) {
@@ -393,6 +404,13 @@ export default function AgentDashboard() {
                         background-color: transparent !important;
                         border-bottom: 1px solid var(--p-color-border-subdued);
                       }
+                      .custom-table-header .order-id-button {
+                        cursor: pointer;
+                        text-align: left;
+                      }
+                      .custom-table-header .order-id-button:hover {
+                        text-decoration: underline;
+                      }
                       .custom-table-header .reason-cell {
                         max-width: 240px;
                         min-width: 0;
@@ -441,7 +459,15 @@ export default function AgentDashboard() {
                         return (
                           <IndexTable.Row id={order.id.toString()} key={order.id} position={index}>
                             <IndexTable.Cell><Checkbox label="" checked={false} onChange={() => {}} /></IndexTable.Cell>
-                            <IndexTable.Cell><Text as="span" fontWeight="bold">#{order.name}</Text></IndexTable.Cell>
+                            <IndexTable.Cell>
+                              {/* The order ID doubles as the timeline affordance — the actions
+                                  cell is already crowded, and this mirrors Shopify admin. */}
+                              <Tooltip content="View timeline" preferredPosition="above">
+                                <UnstyledButton className="order-id-button" onClick={() => openTimelineDialog(order)}>
+                                  <Text as="span" fontWeight="bold">#{order.name}</Text>
+                                </UnstyledButton>
+                              </Tooltip>
+                            </IndexTable.Cell>
                             <IndexTable.Cell>
                               <BlockStack gap="050">
                                 <Text as="span" variant="bodySm">{dateStr}</Text>
@@ -610,6 +636,12 @@ export default function AgentDashboard() {
            </Box>
          </Modal.Section>
       </Modal>
+
+      <OrderTimelineModal
+        open={timelineDlg.open}
+        order={timelineDlg.order}
+        onClose={closeTimelineDialog}
+      />
     </Page>
 
 	);

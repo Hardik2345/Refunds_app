@@ -1,5 +1,6 @@
 const express = require('express');
 const { getOrders, refundOrderByPhone,approvePendingRefund, denyPendingRefund, bulkPreviewRefunds } = require('../controllers/refundsController');
+const { getOrderTimeline } = require('../controllers/orderTimelineController');
 const { buildRefundContext, applyRefundRules} = require("../middlewares/rules");
 const authController = require('../controllers/authController');
 const tenantMiddleware = require('../middlewares/tenantMiddleware');
@@ -17,6 +18,9 @@ function requireSuperAdmin(req, res, next) {
 
 
 router.route('/orders').get(secure, getOrders);
+
+// Read-only Shopify order timeline (Admin GraphQL Order.events)
+router.get('/orders/:orderId/timeline', secure, getOrderTimeline);
 
 router.route('/refund')
   .post(
