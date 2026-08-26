@@ -461,9 +461,9 @@ export default function AgentDashboard() {
                           <IndexTable.Row id={order.id.toString()} key={order.id} position={index}>
                             <IndexTable.Cell><Checkbox label="" checked={false} onChange={() => {}} /></IndexTable.Cell>
                             <IndexTable.Cell>
-                              {/* The order ID doubles as the timeline affordance — the actions
+                              {/* The order ID doubles as the details affordance — the actions
                                   cell is already crowded, and this mirrors Shopify admin. */}
-                              <Tooltip content="View timeline" preferredPosition="above">
+                              <Tooltip content="View order details" preferredPosition="above">
                                 <UnstyledButton className="order-id-button" onClick={() => openTimelineDialog(order)}>
                                   <Text as="span" fontWeight="bold">#{order.name}</Text>
                                 </UnstyledButton>

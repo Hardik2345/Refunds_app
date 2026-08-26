@@ -1,4 +1,8 @@
-const { getOrderEvents, DEFAULT_PAGE_SIZE } = require("../services/shopifyOrderEventsService");
+const {
+  getOrderEvents,
+  getOrderDetail,
+  DEFAULT_PAGE_SIZE,
+} = require("../services/shopifyOrderEventsService");
 
 // Accepts either a numeric Shopify order id or a full Order GID.
 const ORDER_ID_PATTERN = /^(?:gid:\/\/shopify\/Order\/)?\d+$/;
@@ -6,8 +10,11 @@ const ORDER_ID_PATTERN = /^(?:gid:\/\/shopify\/Order\/)?\d+$/;
 /**
  * GET /api/v1/orders/:orderId/timeline
  *
- * Read-only proxy over the Shopify Admin GraphQL `Order.events` connection —
- * the same data that backs the Timeline panel in Shopify admin.
+ * Read-only proxy over the Shopify Admin GraphQL `Order` object. The first call
+ * returns the order header, its line items (with CDN-resized thumbnails) and
+ * the first page of `Order.events` in a single Shopify request; subsequent
+ * calls with `?cursor=` page the events only, so "Load more" never refetches
+ * the line items or their images.
  */
 exports.getOrderTimeline = async (req, res) => {
   // platform_admin/user_admin can send `x-tenant-id: ALL`, in which case
@@ -21,14 +28,19 @@ exports.getOrderTimeline = async (req, res) => {
     return res.status(400).json({ error: "Invalid orderId." });
   }
 
+  const cursor = req.query.cursor || null;
+
   try {
-    const result = await getOrderEvents({
+    const common = {
       tenant: req.tenant,
       orderId,
       limit: req.query.limit || DEFAULT_PAGE_SIZE,
-      cursor: req.query.cursor || null,
       useRedisCache: true,
-    });
+    };
+
+    const result = cursor
+      ? await getOrderEvents({ ...common, cursor })
+      : await getOrderDetail(common);
 
     if (result.status === "forbidden") {
       return res.status(403).json({
@@ -47,7 +59,15 @@ exports.getOrderTimeline = async (req, res) => {
       });
     }
 
-    return res.status(200).json({ events: result.events, pageInfo: result.pageInfo });
+    // `order`/`lineItems` only come back on the first page; the paginated
+    // branch returns events alone.
+    return res.status(200).json({
+      order: result.order || null,
+      lineItems: result.lineItems || [],
+      hasMoreLineItems: result.hasMoreLineItems === true,
+      events: result.events,
+      pageInfo: result.pageInfo,
+    });
   } catch (err) {
     console.error(`[orderTimeline] failed for order ${orderId}:`, err.message);
     return res.status(500).json({ error: "Internal Server Error" });
