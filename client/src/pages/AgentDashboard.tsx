@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Page, Layout, Card, Text, TextField, InlineStack, Badge, Button, IndexTable, Modal, Box, Checkbox, BlockStack } from '@shopify/polaris';
+import { Page, Layout, Card, Text, TextField, InlineStack, Badge, Button, IndexTable, Modal, Box, Checkbox, BlockStack, Tooltip } from '@shopify/polaris';
 import { CustomSelect } from '../components/CustomSelect';
 import { FilterIcon } from '@shopify/polaris-icons';
 import api from '../apiClient';
@@ -393,6 +393,11 @@ export default function AgentDashboard() {
                         background-color: transparent !important;
                         border-bottom: 1px solid var(--p-color-border-subdued);
                       }
+                      .custom-table-header .reason-cell {
+                        max-width: 240px;
+                        min-width: 0;
+                        overflow: hidden;
+                      }
                     `}</style>
                     <IndexTable
                       resourceName={resourceName}
@@ -450,9 +455,13 @@ export default function AgentDashboard() {
                               <InlineStack gap="100">{badges}</InlineStack>
                             </IndexTable.Cell>
                             <IndexTable.Cell>
-                              <Box maxWidth="200px">
-                                <Text as="span" tone="subdued" variant="bodySm">{reason}</Text>
-                              </Box>
+                              {/* Reasons can be long enough to spill over the action buttons, so
+                                  clip to one line here and keep the full text in a tooltip. */}
+                              <Tooltip content={reason} preferredPosition="above" width="wide">
+                                <div className="reason-cell">
+                                  <Text as="span" tone="subdued" variant="bodySm" truncate>{reason}</Text>
+                                </div>
+                              </Tooltip>
                             </IndexTable.Cell>
                             <IndexTable.Cell>
                               <InlineStack gap="200" align="end">
@@ -538,7 +547,7 @@ export default function AgentDashboard() {
               autoComplete="off"
               value={confirm.note ?? ''}
               onChange={(v) => setConfirm(prev => ({ ...prev, note: v }))}
-              helpText="Saved on the refund in Shopify. Visible to your team, not to the customer."
+              helpText={`Shown as the refund reason on the order in Shopify — the "Refunded" row that otherwise reads "No reason provided".`}
             />
           </Box>
         </Modal.Section>
